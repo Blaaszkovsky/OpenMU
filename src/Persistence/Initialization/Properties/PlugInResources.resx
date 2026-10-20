@@ -388,4 +388,6 @@
   <data name="AddRageFighterAncientSetsUpdatePlugIn_Description" xml:space="preserve"><value>This update adds the ancient sets Vega and Chamer of the Sacred items.</value></data>
   <data name="AddFereaDataUpdatePlugIn_Name" xml:space="preserve"><value>Add Ferea map</value></data>
   <data name="AddFereaDataUpdatePlugIn_Description" xml:space="preserve"><value>Adds Ferea terrain, a spawn gate and a warp entry to an existing Season 6 configuration.</value></data>
+  <data name="AddBaskiPrototypeUpdatePlugIn_Name" xml:space="preserve"><value>Add Baski prototype</value></data>
+  <data name="AddBaskiPrototypeUpdatePlugIn_Description" xml:space="preserve"><value>Adds a provisional Baski monster definition and spawn to Ferea for extended-client validation.</value></data>
 </root>

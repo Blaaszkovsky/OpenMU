@@ -13,6 +13,7 @@ using MUnique.OpenMU.Persistence.Initialization.CharacterClasses;
 using MUnique.OpenMU.Persistence.Initialization.Items;
 using MUnique.OpenMU.Persistence.Initialization.VersionSeasonSix.Events;
 using MUnique.OpenMU.Persistence.Initialization.VersionSeasonSix.Items;
+using MUnique.OpenMU.Persistence.Initialization.VersionSeasonSix.Monsters;
 
 /// <summary>
 /// Initializes the <see cref="GameConfiguration"/>.
@@ -80,6 +81,7 @@ public class GameConfigurationInitializer : GameConfigurationInitializerBase
         new NpcInitialization(this.Context, this.GameConfiguration).Initialize();
         new InvasionMobsInitialization(this.Context, this.GameConfiguration).Initialize();
         new GameMapsInitializer(this.Context, this.GameConfiguration).Initialize();
+        new BaskiPrototypeInitializer(this.Context, this.GameConfiguration).Initialize();
         this.AssignCharacterClassHomeMaps();
         this.WireRenaDropToEventMaps();
         new SocketSystem(this.Context, this.GameConfiguration).Initialize();

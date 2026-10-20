@@ -928,5 +928,11 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         /// <summary>Gets the localized AddFereaDataUpdatePlugIn_Description text.</summary>
         public static string AddFereaDataUpdatePlugIn_Description => ResourceManager.GetString("AddFereaDataUpdatePlugIn_Description", resourceCulture)!;
 
+        /// <summary>Gets the localized AddBaskiPrototypeUpdatePlugIn_Name text.</summary>
+        public static string AddBaskiPrototypeUpdatePlugIn_Name => ResourceManager.GetString("AddBaskiPrototypeUpdatePlugIn_Name", resourceCulture)!;
+
+        /// <summary>Gets the localized AddBaskiPrototypeUpdatePlugIn_Description text.</summary>
+        public static string AddBaskiPrototypeUpdatePlugIn_Description => ResourceManager.GetString("AddBaskiPrototypeUpdatePlugIn_Description", resourceCulture)!;
+
     }
 }
