@@ -105,6 +105,50 @@ public class Wings : WingsInitializerBase
         this.CreateWing(40, 2, 3, LocalizedString.FromResource(() => ItemNames.CapeOfEmperor), 150, 45, 220, 400, 0, 0, 0, 0, 3, 0, 0, this.BuildOptions((0b00, OptionType.HealthRecover), (0b11, OptionType.PhysDamage), (0b10, OptionType.Defense)), 39, 24, this._damageIncreaseByLevelTable, thirdWingOptions);
         this.CreateWing(43, 4, 3, LocalizedString.FromResource(() => ItemNames.WingOfDimension), 150, 45, 220, 400, 0, 0, 0, 0, 0, 3, 0, this.BuildOptions((0b00, OptionType.HealthRecover), (0b11, OptionType.WizDamage), (0b10, OptionType.CurseDamage)), 39, 39, this._damageIncreaseByLevelTable, thirdWingOptions);
         this.CreateWing(50, 2, 3, LocalizedString.FromResource(() => ItemNames.CapeOfOverrule), 150, 45, 220, 400, 0, 0, 0, 0, 0, 0, 3, this.BuildOptions((0b00, OptionType.HealthRecover), (0b11, OptionType.PhysDamage), (0b10, OptionType.Defense)), 39, 39, this._damageIncreaseByLevelTable, thirdWingOptions);
+
+        this.AddExperimentalFearlessWing();
+    }
+
+    /// <summary>
+    /// Adds the experimental Fearless Wings for the Dark Knight class without changing existing wing identifiers.
+    /// </summary>
+    /// <returns>The added wing, or <see langword="null"/> when it already exists.</returns>
+    internal ItemDefinition? AddExperimentalFearlessWing()
+    {
+        const byte wingNumber = 248;
+        if (this.GameConfiguration.Items.Any(item => item is { Group: 12, Number: wingNumber }))
+        {
+            return null;
+        }
+
+        var wingOfStorm = this.GameConfiguration.Items.First(item => item is { Group: 12, Number: 36 });
+        this._absorbByLevelTable = GetBonusTable(wingOfStorm, Stats.DamageReceiveDecrement);
+        this._damageIncreaseByLevelTable = GetBonusTable(wingOfStorm, Stats.AttackDamageIncrease)
+            ?? throw new InvalidOperationException("Wing of Storm damage bonus table is missing.");
+        this._defenseBonusByLevelTableThird = GetBonusTable(wingOfStorm, Stats.DefenseBase);
+
+        return this.CreateWing(
+            wingNumber,
+            4,
+            3,
+            new LocalizedString("Fearless Wings (Knight)"),
+            150,
+            60,
+            220,
+            400,
+            0,
+            3,
+            0,
+            0,
+            0,
+            0,
+            0,
+            this.BuildOptions((0b00, OptionType.HealthRecover), (0b11, OptionType.PhysDamage), (0b10, OptionType.Defense)),
+            39,
+            39,
+            this._damageIncreaseByLevelTable,
+            null,
+            movementSpeed: MovementSpeedConstants.FastWingMovementSpeed);
     }
 
     /// <summary>
