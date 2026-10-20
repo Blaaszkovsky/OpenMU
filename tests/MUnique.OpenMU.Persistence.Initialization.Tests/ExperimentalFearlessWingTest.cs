@@ -6,6 +6,7 @@ namespace MUnique.OpenMU.Persistence.Initialization.Tests;
 
 using Microsoft.Extensions.Logging.Abstractions;
 using MUnique.OpenMU.DataModel.Configuration;
+using MUnique.OpenMU.DataModel.Configuration.Items;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.Persistence.Initialization.CharacterClasses;
 using MUnique.OpenMU.Persistence.Initialization.Updates;
@@ -24,6 +25,7 @@ internal class ExperimentalFearlessWingTest
         using var _ = context;
 
         AssertFearlessWing(configuration);
+        AssertAdditionalWings(configuration);
     }
 
     [Test]
@@ -33,12 +35,34 @@ internal class ExperimentalFearlessWingTest
         using var _ = context;
         var wing = configuration.Items.Single(item => item is { Group: 12, Number: 248 });
         configuration.Items.Remove(wing);
+        foreach (var additionalWing in configuration.Items.Where(item => item is { Group: 12, Number: 245 or 249 }).ToList())
+        {
+            configuration.Items.Remove(additionalWing);
+        }
 
         var update = new AddExperimentalFearlessWingUpdatePlugIn();
         await update.ApplyUpdateAsync(context, configuration).ConfigureAwait(false);
         await update.ApplyUpdateAsync(context, configuration).ConfigureAwait(false);
 
         AssertFearlessWing(configuration);
+        AssertAdditionalWings(configuration);
+    }
+
+    [Test]
+    public async Task UpdateRepairsExistingFearlessWingOptionsAsync()
+    {
+        var (context, configuration) = await CreateConfigurationAsync().ConfigureAwait(false);
+        using var _ = context;
+        var wing = configuration.Items.Single(item => item is { Group: 12, Number: 248 });
+        var specialOptions = wing.PossibleItemOptions.Single(option => option.PossibleOptions.Any(value => value.OptionType == ItemOptionTypes.Wing));
+        wing.PossibleItemOptions.Remove(specialOptions);
+
+        var update = new AddExperimentalFearlessWingUpdatePlugIn();
+        await update.ApplyUpdateAsync(context, configuration).ConfigureAwait(false);
+        await update.ApplyUpdateAsync(context, configuration).ConfigureAwait(false);
+
+        AssertFearlessWing(configuration);
+        AssertAdditionalWings(configuration);
     }
 
     private static void AssertFearlessWing(GameConfiguration configuration)
@@ -52,10 +76,25 @@ internal class ExperimentalFearlessWingTest
             Assert.That((wing.Width, wing.Height), Is.EqualTo((4, 3)));
             Assert.That(wing.DropsFromMonsters, Is.False);
             Assert.That(wing.ItemSlot, Is.SameAs(storm.ItemSlot));
+            Assert.That(wing.PossibleItemOptions.SelectMany(option => option.PossibleOptions).Count(option => option.OptionType == ItemOptionTypes.Wing), Is.EqualTo(4));
             Assert.That(wing.QualifiedCharacters.Select(characterClass => (CharacterClassNumber)characterClass.Number), Does.Contain(CharacterClassNumber.BladeMaster));
             Assert.That(wing.BasePowerUpAttributes.Single(powerUp => powerUp.TargetAttribute == Stats.CanFly).BaseValue, Is.EqualTo(1));
             Assert.That(wing.BasePowerUpAttributes.Single(powerUp => powerUp.TargetAttribute == Stats.DefenseBase).BonusPerLevelTable,
                 Is.SameAs(storm.BasePowerUpAttributes.Single(powerUp => powerUp.TargetAttribute == Stats.DefenseBase).BonusPerLevelTable));
+        });
+    }
+
+    private static void AssertAdditionalWings(GameConfiguration configuration)
+    {
+        var universal = configuration.Items.Single(item => item is { Group: 12, Number: 245 });
+        var wizard = configuration.Items.Single(item => item is { Group: 12, Number: 249 });
+        Assert.Multiple(() =>
+        {
+            Assert.That(universal.QualifiedCharacters.Select(characterClass => (CharacterClassNumber)characterClass.Number), Does.Contain(CharacterClassNumber.DarkKnight));
+            Assert.That(universal.QualifiedCharacters.Select(characterClass => (CharacterClassNumber)characterClass.Number), Does.Contain(CharacterClassNumber.GrandMaster));
+            Assert.That(universal.QualifiedCharacters.Select(characterClass => (CharacterClassNumber)characterClass.Number), Does.Contain(CharacterClassNumber.FairyElf));
+            Assert.That(wizard.QualifiedCharacters.Select(characterClass => (CharacterClassNumber)characterClass.Number), Is.EquivalentTo(new[] { CharacterClassNumber.GrandMaster }));
+            Assert.That(universal.PossibleItemOptions.SelectMany(option => option.PossibleOptions).Count(option => option.OptionType == ItemOptionTypes.Wing), Is.EqualTo(4));
         });
     }
 

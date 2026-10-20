@@ -20,10 +20,10 @@ public class AddExperimentalFearlessWingUpdatePlugIn : UpdatePlugInBase
     public override string DataInitializationKey => VersionSeasonSix.DataInitialization.Id;
 
     /// <inheritdoc />
-    public override string Name => "Add experimental Fearless Wings";
+    public override string Name => "Add experimental wings";
 
     /// <inheritdoc />
-    public override string Description => "Adds item 12/248 for a paired MuMain client with the Fearless wing asset.";
+    public override string Description => "Adds local items 12/245, 12/248 and 12/249, including third-wing options, for a paired MuMain client.";
 
     /// <inheritdoc />
     public override bool IsMandatory => false;
@@ -32,16 +32,26 @@ public class AddExperimentalFearlessWingUpdatePlugIn : UpdatePlugInBase
     public override DateTime CreatedAt => new(2026, 10, 20, 0, 0, 0, DateTimeKind.Utc);
 
     /// <inheritdoc />
+    public override int Version => 2;
+
+    /// <inheritdoc />
+    public override DateTime UpdatedAt => new(2026, 10, 20, 12, 0, 0, DateTimeKind.Utc);
+
+    /// <inheritdoc />
     public override IEnumerable<UpdateDependency> DependsOn => [typeof(AddMovementSpeedAttributesPlugInSeason6).GUID];
 
     /// <inheritdoc />
     protected override ValueTask ApplyAsync(IContext context, GameConfiguration gameConfiguration)
     {
-        var wing = new Wings(context, gameConfiguration).AddExperimentalFearlessWing();
+        var wings = new Wings(context, gameConfiguration);
+        var wing = wings.AddExperimentalFearlessWing();
         if (wing is not null)
         {
             ItemRules.Apply([wing]);
         }
+
+        var additionalWings = wings.AddExperimentalAdditionalWings().ToList();
+        ItemRules.Apply(additionalWings);
 
         return ValueTask.CompletedTask;
     }

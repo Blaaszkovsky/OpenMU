@@ -107,6 +107,7 @@ public class Wings : WingsInitializerBase
         this.CreateWing(50, 2, 3, LocalizedString.FromResource(() => ItemNames.CapeOfOverrule), 150, 45, 220, 400, 0, 0, 0, 0, 0, 0, 3, this.BuildOptions((0b00, OptionType.HealthRecover), (0b11, OptionType.PhysDamage), (0b10, OptionType.Defense)), 39, 39, this._damageIncreaseByLevelTable, thirdWingOptions);
 
         this.AddExperimentalFearlessWing();
+        _ = this.AddExperimentalAdditionalWings().ToList();
     }
 
     /// <summary>
@@ -116,12 +117,19 @@ public class Wings : WingsInitializerBase
     internal ItemDefinition? AddExperimentalFearlessWing()
     {
         const byte wingNumber = 248;
+        var wingOfStorm = this.GameConfiguration.Items.First(item => item is { Group: 12, Number: 36 });
+        var thirdWingOptions = wingOfStorm.PossibleItemOptions.First(option => option.PossibleOptions.Any(value => value.OptionType == ItemOptionTypes.Wing));
         if (this.GameConfiguration.Items.Any(item => item is { Group: 12, Number: wingNumber }))
         {
+            var existing = this.GameConfiguration.Items.First(item => item is { Group: 12, Number: wingNumber });
+            if (!existing.PossibleItemOptions.Contains(thirdWingOptions))
+            {
+                existing.PossibleItemOptions.Add(thirdWingOptions);
+            }
+
             return null;
         }
 
-        var wingOfStorm = this.GameConfiguration.Items.First(item => item is { Group: 12, Number: 36 });
         this._absorbByLevelTable = GetBonusTable(wingOfStorm, Stats.DamageReceiveDecrement);
         this._damageIncreaseByLevelTable = GetBonusTable(wingOfStorm, Stats.AttackDamageIncrease)
             ?? throw new InvalidOperationException("Wing of Storm damage bonus table is missing.");
@@ -147,8 +155,72 @@ public class Wings : WingsInitializerBase
             39,
             39,
             this._damageIncreaseByLevelTable,
-            null,
+            thirdWingOptions,
             movementSpeed: MovementSpeedConstants.FastWingMovementSpeed);
+    }
+
+    /// <summary>
+    /// Adds two local test wings, including one usable by every character class.
+    /// </summary>
+    /// <returns>The newly created definitions.</returns>
+    internal IEnumerable<ItemDefinition> AddExperimentalAdditionalWings()
+    {
+        var storm = this.GameConfiguration.Items.First(item => item is { Group: 12, Number: 36 });
+        this._absorbByLevelTable = GetBonusTable(storm, Stats.DamageReceiveDecrement);
+        this._damageIncreaseByLevelTable = GetBonusTable(storm, Stats.AttackDamageIncrease)
+            ?? throw new InvalidOperationException("Wing of Storm damage bonus table is missing.");
+        this._defenseBonusByLevelTableThird = GetBonusTable(storm, Stats.DefenseBase);
+        var thirdWingOptions = storm.PossibleItemOptions.First(option => option.PossibleOptions.Any(value => value.OptionType == ItemOptionTypes.Wing));
+
+        if (!this.GameConfiguration.Items.Any(item => item is { Group: 12, Number: 245 }))
+        {
+            yield return this.CreateWing(
+                245,
+                4,
+                3,
+                new LocalizedString("Wings of Unity"),
+                150,
+                60,
+                220,
+                400,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                this.BuildOptions((0b00, OptionType.HealthRecover), (0b11, OptionType.PhysDamage), (0b10, OptionType.Defense)),
+                39,
+                39,
+                this._damageIncreaseByLevelTable,
+                thirdWingOptions);
+        }
+
+        if (!this.GameConfiguration.Items.Any(item => item is { Group: 12, Number: 249 }))
+        {
+            yield return this.CreateWing(
+                249,
+                4,
+                3,
+                new LocalizedString("Arcane Wings (Wizard)"),
+                150,
+                45,
+                220,
+                400,
+                3,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                this.BuildOptions((0b00, OptionType.HealthRecover), (0b11, OptionType.WizDamage), (0b10, OptionType.Defense)),
+                39,
+                39,
+                this._damageIncreaseByLevelTable,
+                thirdWingOptions);
+        }
     }
 
     /// <summary>

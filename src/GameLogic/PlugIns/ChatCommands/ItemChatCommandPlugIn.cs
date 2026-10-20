@@ -126,6 +126,21 @@ public class ItemChatCommandPlugIn : ChatCommandPlugInBase<ItemChatCommandArgs>
     {
         if (item.Definition != null && arguments.ExcellentNumber > 0)
         {
+            var wingOptions = item.Definition.PossibleItemOptions
+                .SelectMany(option => option.PossibleOptions)
+                .Where(option => option.OptionType == ItemOptionTypes.Wing)
+                .ToList();
+            if (wingOptions.Count > 0)
+            {
+                var selectedWingOption = wingOptions.FirstOrDefault(option => ((1 << (option.Number - 1)) & arguments.ExcellentNumber) > 0);
+                if (selectedWingOption is not null)
+                {
+                    item.ItemOptions.Add(new ItemOptionLink { ItemOption = selectedWingOption });
+                }
+
+                return;
+            }
+
             var excellentOptions = item.Definition.PossibleItemOptions
                 .SelectMany(o => o.PossibleOptions)
                 .Where(o => o.OptionType == ItemOptionTypes.Excellent)
