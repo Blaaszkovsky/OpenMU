@@ -90,6 +90,7 @@
     <None Remove="Resources\Terrain79.att" />
     <None Remove="Resources\Terrain8.att" />
     <None Remove="Resources\Terrain80.att" />
+    <None Remove="Resources\Terrain113.att" />
     <None Remove="Resources\Terrain81.att" />
     <None Remove="Resources\Terrain82.att" />
     <None Remove="Resources\Terrain9.att" />
@@ -103,6 +104,7 @@
     <EmbeddedResource Include="Resources\075_Terrain5.att" />
     <EmbeddedResource Include="Resources\075_Terrain8.att" />
     <EmbeddedResource Include="Resources\Terrain1.att" />
+    <EmbeddedResource Include="Resources\Terrain113.att" />
     <EmbeddedResource Include="Resources\Terrain10_4.att" />
     <EmbeddedResource Include="Resources\Terrain10_3.att" />
     <EmbeddedResource Include="Resources\Terrain10_2.att" />

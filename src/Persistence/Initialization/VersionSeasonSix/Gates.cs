@@ -85,6 +85,7 @@ public class Gates : InitializerBase
         this.GameConfiguration.WarpList.Add(this.CreateWarpInfo(46, LocalizedString.FromResource(() => WarpNames.Karutan1), 13000, 170, gates[335]));
         this.GameConfiguration.WarpList.Add(this.CreateWarpInfo(47, LocalizedString.FromResource(() => WarpNames.Karutan2), 14000, 170, gates[344]));
         this.GameConfiguration.WarpList.Add(this.CreateWarpInfo(48, LocalizedString.FromResource(() => WarpNames.LaCleon), 15000, 280, gates[287]));
+        this.GameConfiguration.WarpList.Add(this.CreateWarpInfo(50, WarpNames.ResourceManager.GetLocalizedString("Ferea"), 50000, 400, gates[509]));
     }
 
     private WarpInfo CreateWarpInfo(ushort index, LocalizedString name, int costs, int levelRequirement, ExitGate gate)
@@ -442,6 +443,9 @@ public class Gates : InitializerBase
         // Karutan 2
         targetGates.Add(344, this.CreateExitGate(maps[81], 162, 16, 163, 17, 5));
         targetGates.Add(341, this.CreateExitGate(maps[81], 162, 12, 164, 14, 5));
+
+        // Ferea uses World113 assets, but its network map number is 112.
+        targetGates.Add(509, this.CreateExitGate(maps[112], 236, 152, 237, 153, 0, true));
 
         return targetGates;
     }

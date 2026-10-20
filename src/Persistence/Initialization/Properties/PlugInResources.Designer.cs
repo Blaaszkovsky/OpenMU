@@ -922,6 +922,11 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
 
         /// <summary>Gets the localized ScopeExtraProjectilesPlugIn_Description text.</summary>
         public static string ScopeExtraProjectilesPlugIn_Description => ResourceManager.GetString("ScopeExtraProjectilesPlugIn_Description", resourceCulture)!;
+        /// <summary>Gets the localized AddFereaDataUpdatePlugIn_Name text.</summary>
+        public static string AddFereaDataUpdatePlugIn_Name => ResourceManager.GetString("AddFereaDataUpdatePlugIn_Name", resourceCulture)!;
+
+        /// <summary>Gets the localized AddFereaDataUpdatePlugIn_Description text.</summary>
+        public static string AddFereaDataUpdatePlugIn_Description => ResourceManager.GetString("AddFereaDataUpdatePlugIn_Description", resourceCulture)!;
 
     }
 }

@@ -40,6 +40,7 @@ public class GameMapsInitializer : GameMapsInitializerBase
             yield return typeof(Elvenland);
             yield return typeof(Karutan1);
             yield return typeof(Karutan2);
+            yield return typeof(Ferea);
             yield return typeof(Aida);
             yield return typeof(Vulcanus);
             yield return typeof(CrywolfFortress);
