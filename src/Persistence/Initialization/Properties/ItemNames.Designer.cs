@@ -4906,5 +4906,26 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
                 return ResourceManager.GetString("OldJewelleryCase", resourceCulture);
             }
         }
+        /// <summary>Gets FearlessWingsKnight from the configuration name resources.</summary>
+        public static string FearlessWingsKnight {
+            get {
+                return ResourceManager.GetString("FearlessWingsKnight", resourceCulture);
+            }
+        }
+
+        /// <summary>Gets WingsOfUnity from the configuration name resources.</summary>
+        public static string WingsOfUnity {
+            get {
+                return ResourceManager.GetString("WingsOfUnity", resourceCulture);
+            }
+        }
+
+        /// <summary>Gets ArcaneWingsWizard from the configuration name resources.</summary>
+        public static string ArcaneWingsWizard {
+            get {
+                return ResourceManager.GetString("ArcaneWingsWizard", resourceCulture);
+            }
+        }
+
     }
 }

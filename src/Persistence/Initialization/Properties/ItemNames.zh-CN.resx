@@ -2094,4 +2094,13 @@
   <data name="OldJewelleryCase" xml:space="preserve">
     <value>古旧首饰盒</value>
   </data>
+  <data name="FearlessWingsKnight" xml:space="preserve">
+    <value>无畏之翼（骑士）</value>
+  </data>
+  <data name="WingsOfUnity" xml:space="preserve">
+    <value>团结之翼</value>
+  </data>
+  <data name="ArcaneWingsWizard" xml:space="preserve">
+    <value>奥术之翼（法师）</value>
+  </data>
 </root>

@@ -2049,4 +2049,13 @@
   <data name="OldJewelleryCase" xml:space="preserve">
     <value>Alte Schmuckschatulle</value>
   </data>
+  <data name="FearlessWingsKnight" xml:space="preserve">
+    <value>Furchtlose Flügel (Ritter)</value>
+  </data>
+  <data name="WingsOfUnity" xml:space="preserve">
+    <value>Flügel der Einheit</value>
+  </data>
+  <data name="ArcaneWingsWizard" xml:space="preserve">
+    <value>Arkane Flügel (Magier)</value>
+  </data>
 </root>

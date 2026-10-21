@@ -2094,4 +2094,13 @@
   <data name="OldJewelleryCase" xml:space="preserve">
     <value>Old Jewellery Case</value>
   </data>
+  <data name="FearlessWingsKnight" xml:space="preserve">
+    <value>Fearless Wings (Knight)</value>
+  </data>
+  <data name="WingsOfUnity" xml:space="preserve">
+    <value>Wings of Unity</value>
+  </data>
+  <data name="ArcaneWingsWizard" xml:space="preserve">
+    <value>Arcane Wings (Wizard)</value>
+  </data>
 </root>
