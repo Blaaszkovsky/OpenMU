@@ -26,6 +26,9 @@ public abstract class AttackableNpcBase : NonPlayerCharacter, IAttackable
     private readonly IDropGenerator _dropGenerator;
     private readonly PlugInManager _plugInManager;
 
+    // Damage filtering and health subtraction must be one synchronous operation, including phase boundaries.
+    private readonly object _hitLock = new();
+
     private int _health;
 
     /// <summary>
@@ -216,7 +219,17 @@ public abstract class AttackableNpcBase : NonPlayerCharacter, IAttackable
             return;
         }
 
-        var killed = this.TryHit(hitInfo.TotalDamage, attacker);
+        bool killed;
+        lock (this._hitLock)
+        {
+            if (!this.IsAlive)
+            {
+                return;
+            }
+
+            hitInfo = this.FilterHit(hitInfo, attacker);
+            killed = this.TryHit(hitInfo.TotalDamage, attacker);
+        }
 
         var player = this.GetHitNotificationTarget(attacker);
         if (player is not null)
@@ -263,6 +276,14 @@ public abstract class AttackableNpcBase : NonPlayerCharacter, IAttackable
     /// <param name="attacker">The attacker.</param>
     /// <returns><see langword="true"/> when the attack is allowed; otherwise, <see langword="false"/>.</returns>
     protected virtual bool CanBeAttackedBy(IAttacker attacker) => true;
+
+    /// <summary>
+    /// Filters a hit immediately before applying it, including reflected and periodic damage.
+    /// </summary>
+    /// <param name="hit">The incoming hit.</param>
+    /// <param name="attacker">The source of the hit.</param>
+    /// <returns>The effective hit.</returns>
+    protected virtual HitInfo FilterHit(HitInfo hit, IAttacker attacker) => hit;
 
     /// <summary>
     /// Registers the hit.

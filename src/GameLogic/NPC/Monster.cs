@@ -107,6 +107,13 @@ public sealed class Monster : AttackableNpcBase, IAttackable, IAttacker, ISuppor
     }
 
     /// <summary>
+    /// Recovers health atomically without reviving a dead monster or exceeding its maximum health.
+    /// </summary>
+    /// <param name="amount">The maximum recovery amount.</param>
+    /// <returns>The amount recovered.</returns>
+    public int RecoverHealth(int amount) => this.RestoreHealth(amount, (int)this.Attributes[Stats.MaximumHealth]);
+
+    /// <summary>
     /// Attacks the specified target.
     /// </summary>
     /// <param name="target">The target.</param>
@@ -336,6 +343,10 @@ public sealed class Monster : AttackableNpcBase, IAttackable, IAttacker, ISuppor
         base.RegisterHit(attacker);
         this._intelligence.RegisterHit(attacker);
     }
+
+    /// <inheritdoc />
+    protected override HitInfo FilterHit(HitInfo hit, IAttacker attacker) =>
+        this._intelligence is INpcHitFilter filter ? filter.FilterHit(hit, attacker) : hit;
 
     /// <inheritdoc />
     protected override Player? GetHitNotificationTarget(IAttacker attacker)
