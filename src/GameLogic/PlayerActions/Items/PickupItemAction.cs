@@ -153,7 +153,7 @@ public class PickupItemAction
             return await RejectAsync(player, nameof(PlayerMessage.ItemDoesNotBelongToYou)).ConfigureAwait(false);
         }
 
-        if (!droppedItem.IsPlayerAnOwner(player) && droppedItem.IsOwnerPickupPriorityActive)
+        if (!droppedItem.IsPlayerAnOwner(player) && (droppedItem.IsOwnerExclusive || droppedItem.IsOwnerPickupPriorityActive))
         {
             return await RejectAsync(player, nameof(PlayerMessage.ItemDoesNotBelongToYou)).ConfigureAwait(false);
         }

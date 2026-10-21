@@ -5,5 +5,5 @@
   <data name="Name" xml:space="preserve"><value>菲利亚战斗</value></data>
   <data name="Description" xml:space="preserve"><value>运行水晶球、守卫、菲利亚领主和将军的战斗，支持配置胜利物品和WCoinC奖励。</value></data>
   <data name="UpdateName" xml:space="preserve"><value>添加菲利亚战斗</value></data>
-  <data name="UpdateDescription" xml:space="preserve"><value>添加菲利亚战斗的刷新波次、入口和默认胜利宝石奖励。仅在功能尚未配置时启用，保留现有设置和奖励表。</value></data>
+  <data name="UpdateDescription" xml:space="preserve"><value>添加菲利亚战斗波次、入口和缺失的胜利宝石奖励。版本3将旧默认生命值和恢复率调整为单人平衡，保留其他自定义设置和奖励表。</value></data>
 </root>

@@ -16,6 +16,12 @@ using MUnique.OpenMU.Persistence.Initialization.VersionSeasonSix.Maps;
 /// </summary>
 internal sealed class FereaMonstersInitializer : InitializerBase
 {
+    /// <summary>The configured default General health for the Season 6 solo encounter balance.</summary>
+    internal const int GeneralMaximumHealth = 100000;
+
+    /// <summary>The configured default Lord health for the Season 6 solo encounter balance.</summary>
+    internal const int LordMaximumHealth = 300000;
+
     private const short FirstSpawnNumber = 200;
 
     private static readonly (byte X, byte Y)[] HuntingLocations =
@@ -33,8 +39,8 @@ internal sealed class FereaMonstersInitializer : InitializerBase
         new(730, "FereaKnight", 121, 30000, 75, 100, 200, 1),
         new(731, "FereaArcher", 122, 26000, 65, 90, 180, 4),
         new(732, "FereaFighter", 123, 36000, 85, 115, 220, 1),
-        new(733, "FereaGeneral", 150, 250000, 140, 190, 350, 1),
-        new(734, "LordOfFerea", 150, 1000000, 180, 250, 500, 2),
+        new(733, "FereaGeneral", 150, GeneralMaximumHealth, 140, 190, 350, 1),
+        new(734, "LordOfFerea", 150, LordMaximumHealth, 180, 250, 500, 2),
         new(735, "FereaCrystalOrb", 150, 150000, 0, 0, 250, 1),
     ];
 

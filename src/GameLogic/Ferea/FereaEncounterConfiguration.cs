@@ -128,7 +128,7 @@ public sealed class FereaEncounterConfiguration
     /// <summary>
     /// Gets or sets the percent of maximum health recovered per Roar victim each interval.
     /// </summary>
-    public float RegenerationPercentPerPlayer { get; set; } = 0.25f;
+    public float RegenerationPercentPerPlayer { get; set; } = 0.05f;
 
     /// <summary>
     /// Gets or sets the radius of the phase transition which drains Mana and AG.

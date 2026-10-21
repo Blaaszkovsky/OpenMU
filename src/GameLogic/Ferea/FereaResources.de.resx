@@ -5,5 +5,5 @@
   <data name="Name" xml:space="preserve"><value>Ferea-Kampf</value></data>
   <data name="Description" xml:space="preserve"><value>Führt den Kampf gegen Kristallkugel, Wächter, Fürst von Ferea und General mit konfigurierbaren Gegenstands- und WCoinC-Siegesbelohnungen aus.</value></data>
   <data name="UpdateName" xml:space="preserve"><value>Ferea-Kampf hinzufügen</value></data>
-  <data name="UpdateDescription" xml:space="preserve"><value>Fügt Ferea-Kampfwellen, einen Eingang und eine Juwelen-Siegesbelohnung hinzu. Aktiviert die Funktion nur ohne vorhandene Konfiguration; vorhandene Einstellungen und Belohnungstabellen bleiben erhalten.</value></data>
+  <data name="UpdateDescription" xml:space="preserve"><value>Fügt Ferea-Kampfwellen, einen Eingang und fehlende Siegesjuwelen hinzu. Version 3 ersetzt die bisherigen exakten Standardwerte für Leben und Regeneration durch die Solobalance; andere Einstellungen und Belohnungstabellen bleiben erhalten.</value></data>
 </root>

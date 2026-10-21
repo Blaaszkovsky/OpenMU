@@ -30,8 +30,14 @@ The arena can also be reached along its eastern corridor.
 5. Defeat the Lord after the final General. All surviving encounter monsters are
    removed. Victorious participants remain inside the throne room; newcomers
    cannot join during cooldown. By default, one Jewel of Bless, Soul or Chaos is
-   randomly dropped at the Lord's position with normal pickup priority for living
-   participants. Other encounter monsters give no items or Zen.
+   randomly dropped at the Lord's position. Only surviving participants may pick up
+   this reward, even after the usual ten-second pickup priority expires. Other
+   encounter monsters give no items or Zen.
+
+Pick up the victory item before logging out. Ground-drop ownership belongs to the
+winning player session; logging back in creates a new session which cannot claim
+the exclusive item still on the ground. Items already picked up follow normal
+inventory persistence.
 
 The Lord attacks normally, periodically uses an area attack, and places delayed
 mines under selected participants. The blue warning gives three seconds to move.
@@ -64,6 +70,16 @@ using their normal probabilities; edit those groups to choose items or chances.
 Global hunting drop tables do not affect victory rewards. Zen reward groups are
 not supported. Existing reward tables are preserved when applying update version 2.
 
+Version 3 uses a 300,000 HP Lord, a 100,000 HP General and regeneration of 0.05%
+maximum HP per Roar victim per second. The 30-minute battle timer includes all
+General phases. These defaults target a solo level-400 character in this Season 6
+adaptation; equipment, attack rate, movement and party size still affect completion.
+The optional upgrade replaces only the previous exact defaults (1,000,000 Lord HP,
+250,000 General HP and 0.25% regeneration). An operator value identical to those old
+defaults is indistinguishable and will also change when opting into this upgrade.
+Other values, reward settings and spawn health overrides are preserved. Later
+reapplications preserve operator edits and repair missing HP attributes.
+
 Optional WCoinC rewards are disabled by default. Set `VictoryWCoinCChance` from
 0 to 1 and `VictoryWCoinCMinimum`/`VictoryWCoinCMaximum` to an inclusive amount
 range. Each living participant receives an independent roll. Awards are serialized
@@ -71,7 +87,9 @@ with the player's saves, immediately saved, and capped at the account balance li
 Dead, departed and late-arriving characters receive no victory rewards. Failure
 or timeout gives no reward. Repeated encounter updates cannot award the same victory
 twice. The encounter and its cooldown are in memory: there is no durable reward
-queue or replay after a server crash. Check server logs for failed reward saves.
+queue or replay after a server crash. A restart clears cooldown and permits another
+encounter, so keep WCoinC disabled where repeated restarts could be exploited.
+Check server logs for failed reward saves, including saves returning false.
 
 | Wave | Purpose | Monsters |
 | --- | --- | --- |
@@ -99,7 +117,7 @@ healing. These are reference descriptions, not source code. Public guides disagr
 about coordinates, balance and later-season mechanics.
 
 The 75/50/25% gates, three guardians, reinforcement quantities, arena placement on
-shipped walkable terrain, 30-minute limit and regeneration of 0.25% maximum HP per
+shipped walkable terrain, 30-minute limit and regeneration of 0.05% maximum HP per
 Roar victim per second (zero if nobody was hit) are editable OpenMU choices,
 not verified Webzen formulas. This is a Season 6 balance adaptation without elemental
 combat. No decompiled server source was used.

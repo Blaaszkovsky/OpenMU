@@ -481,7 +481,7 @@ public sealed class FereaEncounter
                 var (item, _, _) = this._gameContext.DropGenerator.GenerateItemDrop(lord.Definition.DropItemGroups);
                 if (item is not null)
                 {
-                    var drop = new DroppedItem(item, lord.Position, lord.CurrentMap, null, winners);
+                    var drop = new DroppedItem(item, lord.Position, lord.CurrentMap, null, winners) { IsOwnerExclusive = true };
                     await lord.CurrentMap.AddAsync(drop).ConfigureAwait(false);
                 }
             }
@@ -506,7 +506,10 @@ public sealed class FereaEncounter
                     if (player.Account is { } account)
                     {
                         account.WCoinC = (int)Math.Min(int.MaxValue, (long)account.WCoinC + amount);
-                        await player.SaveProgressAsync().ConfigureAwait(false);
+                        if (!await player.SaveProgressAsync().ConfigureAwait(false))
+                        {
+                            throw new InvalidOperationException("Saving the Ferea victory WCoinC reward returned false.");
+                        }
                     }
                 }).ConfigureAwait(false);
             }

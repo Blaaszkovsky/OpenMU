@@ -6,6 +6,7 @@ namespace MUnique.OpenMU.Tests;
 
 using Microsoft.Extensions.Logging.Abstractions;
 using MUnique.OpenMU.GameLogic;
+using MUnique.OpenMU.Persistence;
 using MUnique.OpenMU.Persistence.InMemory;
 using MUnique.OpenMU.PlugIns;
 
@@ -19,10 +20,13 @@ public static class GameContextTestHelper
     /// </summary>
     /// <param name="additionalPlugInConfigurations">Additional plugin configurations which should be applied, e.g. to deactivate specific plugins.</param>
     /// <param name="dropGenerator">An optional drop generator to verify reward behavior.</param>
+    /// <param name="persistenceContextProvider">An optional persistence provider for failure scenarios.</param>
+    /// <param name="loggerFactory">An optional logger factory to observe failures.</param>
     /// <returns>The game context with MuHelperFeaturePlugIn configured.</returns>
-    public static IGameContext CreateGameContext(IEnumerable<PlugInConfiguration>? additionalPlugInConfigurations = null, IDropGenerator? dropGenerator = null)
+    public static IGameContext CreateGameContext(IEnumerable<PlugInConfiguration>? additionalPlugInConfigurations = null, IDropGenerator? dropGenerator = null,
+        IPersistenceContextProvider? persistenceContextProvider = null, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
     {
-        var contextProvider = new InMemoryPersistenceContextProvider();
+        var contextProvider = persistenceContextProvider ?? new InMemoryPersistenceContextProvider();
         var context = contextProvider.CreateNewContext();
         var gameConfig = context.CreateNew<MUnique.OpenMU.Persistence.BasicModel.GameConfiguration>();
         var mapDef = context.CreateNew<MUnique.OpenMU.Persistence.BasicModel.GameMapDefinition>();
@@ -51,7 +55,7 @@ public static class GameContextTestHelper
         }
 
         var plugInManager = new PlugInManager(plugInConfigurations, new NullLoggerFactory(), null, null);
-        var gameContext = new GameContext(gameConfig, contextProvider, mapInitializer, new NullLoggerFactory(), plugInManager, dropGenerator, new ConfigurationChangeMediator());
+        var gameContext = new GameContext(gameConfig, contextProvider, mapInitializer, loggerFactory ?? new NullLoggerFactory(), plugInManager, dropGenerator, new ConfigurationChangeMediator());
         mapInitializer.PlugInManager = gameContext.PlugInManager;
         mapInitializer.PathFinderPool = gameContext.PathFinderPool;
 

@@ -4,6 +4,7 @@
 
 namespace MUnique.OpenMU.Tests;
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using MUnique.OpenMU.GameLogic;
@@ -11,6 +12,8 @@ using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameLogic.Ferea;
 using MUnique.OpenMU.GameLogic.NPC;
 using MUnique.OpenMU.Pathfinding;
+using MUnique.OpenMU.Persistence;
+using MUnique.OpenMU.Persistence.InMemory;
 using MonsterAttribute = MUnique.OpenMU.Persistence.BasicModel.MonsterAttribute;
 using MonsterDefinition = MUnique.OpenMU.Persistence.BasicModel.MonsterDefinition;
 using MonsterSpawnArea = MUnique.OpenMU.Persistence.BasicModel.MonsterSpawnArea;
@@ -27,13 +30,28 @@ public class FereaEncounterTest
     private FereaEncounter _encounter = null!;
     private TestClock _clock = null!;
     private Mock<IDropGenerator> _dropGenerator = null!;
+    private IPlayerContext? _playerContextOverride;
+    private Mock<ILogger> _logger = null!;
 
     /// <summary>Creates a server and a minimal encounter.</summary>
     [SetUp]
     public async Task SetUpAsync()
     {
         this._dropGenerator = new Mock<IDropGenerator>(MockBehavior.Strict);
-        this._gameContext = (GameContext)GameContextTestHelper.CreateGameContext(dropGenerator: this._dropGenerator.Object);
+        this._playerContextOverride = null;
+        this._logger = new Mock<ILogger>();
+        var loggerFactory = new Mock<ILoggerFactory>();
+        loggerFactory.Setup(f => f.CreateLogger(It.IsAny<string>())).Returns(this._logger.Object);
+        var backingProvider = new InMemoryPersistenceContextProvider();
+        var provider = new Mock<IPersistenceContextProvider>();
+        provider.Setup(p => p.RepositoryProvider).Returns(backingProvider.RepositoryProvider);
+        provider.Setup(p => p.CreateNewContext()).Returns(backingProvider.CreateNewContext);
+        provider.Setup(p => p.CreateNewContext(It.IsAny<MUnique.OpenMU.DataModel.Configuration.GameConfiguration>()))
+            .Returns((MUnique.OpenMU.DataModel.Configuration.GameConfiguration c) => backingProvider.CreateNewContext(c));
+        provider.Setup(p => p.CreateNewPlayerContext(It.IsAny<MUnique.OpenMU.DataModel.Configuration.GameConfiguration>()))
+            .Returns((MUnique.OpenMU.DataModel.Configuration.GameConfiguration c) => this._playerContextOverride ?? backingProvider.CreateNewPlayerContext(c));
+        this._gameContext = (GameContext)GameContextTestHelper.CreateGameContext(dropGenerator: this._dropGenerator.Object,
+            persistenceContextProvider: provider.Object, loggerFactory: loggerFactory.Object);
         this._map = (await this._gameContext.GetMapAsync(0).ConfigureAwait(false))!;
         this._clock = new TestClock();
         var configuration = new FereaEncounterConfiguration
@@ -266,12 +284,56 @@ public class FereaEncounterTest
         await Task.WhenAll(Enumerable.Range(0, 10).Select(_ => this._encounter.TickAsync().AsTask())).ConfigureAwait(false);
         var drop = this._map.GetDropsInRange(new Point(30, 120), 255).OfType<DroppedItem>().Single();
         Assert.That(drop.Item, Is.SameAs(item));
+        Assert.That(drop.IsOwnerExclusive, Is.True);
         Assert.That(drop.IsPlayerAnOwner(this._player), Is.True);
         var outsider = await this.CreatePlayerAsync(new Point(31, 120)).ConfigureAwait(false);
         Assert.That(drop.IsPlayerAnOwner(outsider), Is.False);
         Assert.That(this._player.Account!.WCoinC, Is.InRange(minimum, maximum));
         this._dropGenerator.Verify(g => g.GenerateItemDrop(It.IsAny<IEnumerable<MUnique.OpenMU.DataModel.Configuration.DropItemGroup>>()), Times.Once);
         this._dropGenerator.VerifyNoOtherCalls();
+    }
+
+    /// <summary>Verifies a false persistence result is logged and never causes a second credit.</summary>
+    [Test]
+    public async Task FailedCoinSaveIsReportedWithoutDuplicateCreditAsync()
+    {
+        var context = new Mock<IPlayerContext>();
+        context.Setup(c => c.GetPendingCastleSiegeRewardsAsync(It.IsAny<Guid>(), It.IsAny<System.Threading.CancellationToken>()))
+            .ReturnsAsync(Array.Empty<MUnique.OpenMU.DataModel.Entities.CastleSiegePendingReward>());
+        context.Setup(c => c.SaveChangesAsync(It.IsAny<System.Threading.CancellationToken>())).ReturnsAsync(false);
+        this._playerContextOverride = context.Object;
+        var recipient = await this.CreatePlayerAsync(new Point(32, 120)).ConfigureAwait(false);
+        this._encounter.Configuration.VictoryWCoinCChance = 1;
+        this._encounter.Configuration.VictoryWCoinCMinimum = 1;
+        this._encounter.Configuration.VictoryWCoinCMaximum = 1;
+        await this.StartBattleAsync().ConfigureAwait(false);
+        await this.DefeatLordAsync().ConfigureAwait(false);
+        await this._encounter.TickAsync().ConfigureAwait(false);
+        Assert.That(recipient.Account!.WCoinC, Is.EqualTo(1));
+        context.Verify(c => c.SaveChangesAsync(It.IsAny<System.Threading.CancellationToken>()), Times.Once);
+        this._logger.Verify(l => l.Log(LogLevel.Error, It.IsAny<EventId>(),
+            It.Is<It.IsAnyType>((state, _) => state.ToString()!.Contains("Could not save the Ferea victory WCoinC reward", StringComparison.Ordinal)),
+            It.Is<Exception?>(e => e is InvalidOperationException), It.IsAny<Func<It.IsAnyType, Exception?, string>>()), Times.Once);
+    }
+
+    /// <summary>Verifies exclusive ground rewards reject outsiders after normal priority expires.</summary>
+    [Test]
+    public async Task ExclusiveRewardRejectsOutsiderAfterPriorityExpiresAsync()
+    {
+        var item = new MUnique.OpenMU.Persistence.BasicModel.Item
+        {
+            Definition = new MUnique.OpenMU.Persistence.BasicModel.ItemDefinition { Width = 1, Height = 1 },
+        };
+        var outsider = await this.CreatePlayerAsync(this._player.Position).ConfigureAwait(false);
+        var drop = new DroppedItem(item, this._player.Position, this._map, null, [this._player]) { IsOwnerExclusive = true };
+        await this._map.AddAsync(drop).ConfigureAwait(false);
+        await Task.Delay(TimeSpan.FromMilliseconds(10100)).ConfigureAwait(false);
+        Assert.That(drop.IsOwnerPickupPriorityActive, Is.False);
+        Assert.That((await drop.TryPickUpByAsync(outsider).ConfigureAwait(false)).Success, Is.False);
+        await new MUnique.OpenMU.GameLogic.PlayerActions.Items.PickupItemAction().PickupItemAsync(outsider, drop.Id).ConfigureAwait(false);
+        Assert.That(this._map.GetDrop(drop.Id), Is.SameAs(drop));
+        Assert.That(outsider.Inventory!.Items, Is.Empty);
+        Assert.That((await drop.TryPickUpByAsync(this._player).ConfigureAwait(false)).Success, Is.True);
     }
 
     /// <summary>Verifies an item-generation failure cannot duplicate coins or retain summoned monsters.</summary>

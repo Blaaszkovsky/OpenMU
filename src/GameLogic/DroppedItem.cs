@@ -91,6 +91,11 @@ public sealed class DroppedItem : AsyncDisposable, ILocateable
     public bool IsOwnerPickupPriorityActive => DateTime.UtcNow < this._dropTimestamp.Add(TimeUntilDropIsFree);
 
     /// <summary>
+    /// Gets a value indicating whether only the specified owners may pick up this drop throughout its lifetime.
+    /// </summary>
+    public bool IsOwnerExclusive { get; init; }
+
+    /// <summary>
     /// Tries to pick the item up by the specified player.
     /// </summary>
     /// <param name="player">The player.</param>
@@ -104,7 +109,7 @@ public sealed class DroppedItem : AsyncDisposable, ILocateable
     public async ValueTask<(bool Success, Item? StackTarget)> TryPickUpByAsync(Player player)
     {
         Item? stackTarget = null;
-        if (!this._availableToPick)
+        if (!this._availableToPick || (this.IsOwnerExclusive && !this.IsPlayerAnOwner(player)))
         {
             return (false, stackTarget);
         }

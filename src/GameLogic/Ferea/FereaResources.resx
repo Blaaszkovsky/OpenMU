@@ -7,5 +7,5 @@
   <data name="Name" xml:space="preserve"><value>Ferea encounter</value></data>
   <data name="Description" xml:space="preserve"><value>Runs the Crystal Orb, guardians, Lord of Ferea and General encounter with configurable victory item and WCoinC rewards.</value></data>
   <data name="UpdateName" xml:space="preserve"><value>Add Ferea encounter</value></data>
-  <data name="UpdateDescription" xml:space="preserve"><value>Adds encounter spawn waves, an entrance and a default Lord victory jewel table in Ferea. Enables the feature if it has no configuration yet; preserves existing feature settings and reward tables.</value></data>
+  <data name="UpdateDescription" xml:space="preserve"><value>Adds Ferea encounter waves, an entrance and a missing victory jewel table. Version 3 replaces the previous exact default health and regeneration with the solo balance; preserves other operator settings and reward tables.</value></data>
 </root>
