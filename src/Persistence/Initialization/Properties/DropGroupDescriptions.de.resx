@@ -234,4 +234,7 @@
   <data name="FereaVictory" xml:space="preserve">
     <value>Fürst von Ferea: Siegesjuwelen</value>
   </data>
+  <data name="BaskiWingsOfUnity" xml:space="preserve">
+    <value>Baski: experimentelle Flügel der Einheit</value>
+  </data>
 </root>

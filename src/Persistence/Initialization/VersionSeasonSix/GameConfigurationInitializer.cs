@@ -82,6 +82,7 @@ public class GameConfigurationInitializer : GameConfigurationInitializerBase
         new InvasionMobsInitialization(this.Context, this.GameConfiguration).Initialize();
         new GameMapsInitializer(this.Context, this.GameConfiguration).Initialize();
         new BaskiPrototypeInitializer(this.Context, this.GameConfiguration).Initialize();
+        new BaskiWingRewardInitializer(this.Context, this.GameConfiguration).Initialize();
         new FereaMonstersInitializer(this.Context, this.GameConfiguration).Initialize();
         new FereaEncounterInitializer(this.Context, this.GameConfiguration).Initialize();
         this.AssignCharacterClassHomeMaps();

@@ -234,4 +234,7 @@
   <data name="FereaVictory" xml:space="preserve">
     <value>Lord of Ferea: victory jewels</value>
   </data>
+  <data name="BaskiWingsOfUnity" xml:space="preserve">
+    <value>Baski: experimental Wings of Unity</value>
+  </data>
 </root>

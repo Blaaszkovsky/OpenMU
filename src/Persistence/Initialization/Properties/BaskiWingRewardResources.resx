@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="Name" xml:space="preserve"><value>Add experimental Baski wing reward</value></data>
+  <data name="Description" xml:space="preserve"><value>Baski drops exactly one Wings of Unity (12/245) for paired MuMain testing. Preserves existing operator reward groups and their drop cap. This is experimental acquisition data, not final economy balance.</value></data>
+</root>
