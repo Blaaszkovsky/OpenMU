@@ -138,10 +138,15 @@ public class FereaEncounterTest
         await this._encounter.TickAsync().ConfigureAwait(false);
         Assert.That(this._encounter.State, Is.EqualTo(FereaEncounterState.Cooldown));
         Assert.That(this.GetMonsters(), Is.Empty);
-        Assert.That(this._player.Position, Is.EqualTo(new Point(54, 122)));
+        Assert.That(this._player.Position, Is.EqualTo(new Point(31, 120)));
         this._clock.Advance(TimeSpan.FromSeconds(9));
         await this._encounter.TickAsync().ConfigureAwait(false);
         Assert.That(this.GetMonsters(), Is.Empty);
+        Assert.That(this._player.Position, Is.EqualTo(new Point(31, 120)));
+        var outsider = await this.CreatePlayerAsync(new Point(31, 120)).ConfigureAwait(false);
+        await this._encounter.TickAsync().ConfigureAwait(false);
+        Assert.That(outsider.Position, Is.EqualTo(new Point(54, 122)));
+        Assert.That(this._player.Position, Is.EqualTo(new Point(31, 120)));
         this._clock.Advance(TimeSpan.FromSeconds(1));
         await this._encounter.TickAsync().ConfigureAwait(false);
         Assert.That(this._encounter.State, Is.EqualTo(FereaEncounterState.Orb));

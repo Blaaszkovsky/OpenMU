@@ -28,8 +28,9 @@ The arena can also be reached along its eastern corridor.
    the Lord returns to his throne, and three reinforcements join. The Lord is
    invulnerable and regenerates until the General dies. Then resume damaging him.
 5. Defeat the Lord after the final General. All surviving encounter monsters are
-   removed and players move to 54,122. There are **no item or Zen rewards** from
-   any encounter monster, regardless of global drop settings.
+   removed. Victorious participants remain inside the throne room; newcomers
+   cannot join during cooldown. There are **no item or Zen rewards** from any
+   encounter monster, regardless of global drop settings.
 
 The Lord attacks normally, periodically uses an area attack, and places delayed
 mines under selected participants. The blue warning gives three seconds to move.

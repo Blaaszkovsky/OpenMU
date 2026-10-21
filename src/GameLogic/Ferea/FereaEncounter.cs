@@ -442,10 +442,16 @@ public sealed class FereaEncounter
         this._deadline = now + (victory ? TimeSpan.FromSeconds(minimum + (Random.Shared.NextDouble() * (maximum - minimum))) : this.Configuration.FailureCooldown);
         await this.RemoveMonstersAsync().ConfigureAwait(false);
         await this.NotifyAsync(victory ? "FereaEncounterVictory" : "FereaEncounterReset").ConfigureAwait(false);
-        this._participants.Clear();
+        // Keep winners registered through cooldown so the late-entry guard does not remove them on the next tick.
+        if (!victory)
+        {
+            this._participants.Clear();
+        }
+
         if (this._map is { } map)
         {
-            foreach (var player in map.GetPlayers().Where(p => this.Configuration.Contains(p.Position)))
+            foreach (var player in map.GetPlayers().Where(p => this.Configuration.Contains(p.Position)
+                && (!victory || !this._participants.ContainsKey(p))))
             {
                 await this.EjectAsync(player).ConfigureAwait(false);
             }
