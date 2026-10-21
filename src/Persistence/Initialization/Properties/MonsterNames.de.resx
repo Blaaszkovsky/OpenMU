@@ -150,4 +150,10 @@
     <value>Doppelgänger-Beschwörer</value>
   </data>
   <data name="Baski" xml:space="preserve"><value>Baski</value></data>
+  <data name="FereaKnight" xml:space="preserve"><value>Ferea-Ritter</value></data>
+  <data name="FereaArcher" xml:space="preserve"><value>Ferea-Bogenschütze</value></data>
+  <data name="FereaFighter" xml:space="preserve"><value>Ferea-Kämpfer</value></data>
+  <data name="FereaGeneral" xml:space="preserve"><value>Ferea-General</value></data>
+  <data name="LordOfFerea" xml:space="preserve"><value>Herr von Ferea</value></data>
+  <data name="FereaCrystalOrb" xml:space="preserve"><value>Ferea-Kristallkugel</value></data>
 </root>

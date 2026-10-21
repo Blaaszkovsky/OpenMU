@@ -37,9 +37,16 @@ public class AddBaskiPrototypeUpdatePlugIn : UpdatePlugInBase
     public override DateTime CreatedAt => new(2026, 10, 20, 0, 0, 0, DateTimeKind.Utc);
 
     /// <inheritdoc />
+    public override DateTime UpdatedAt => new(2026, 10, 21, 0, 0, 0, DateTimeKind.Utc);
+
+    /// <inheritdoc />
+    public override int Version => 4;
+
+    /// <inheritdoc />
     protected override ValueTask ApplyAsync(IContext context, GameConfiguration gameConfiguration)
     {
         new BaskiPrototypeInitializer(context, gameConfiguration).Initialize();
+        new FereaMonstersInitializer(context, gameConfiguration).Initialize();
         return ValueTask.CompletedTask;
     }
 }

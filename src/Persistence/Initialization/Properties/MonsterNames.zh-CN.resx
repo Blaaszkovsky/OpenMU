@@ -849,4 +849,10 @@
     <value>巴尔盖斯</value>
   </data>
   <data name="Baski" xml:space="preserve"><value>巴斯基</value></data>
+  <data name="FereaKnight" xml:space="preserve"><value>菲利亚骑士</value></data>
+  <data name="FereaArcher" xml:space="preserve"><value>菲利亚弓箭手</value></data>
+  <data name="FereaFighter" xml:space="preserve"><value>菲利亚斗士</value></data>
+  <data name="FereaGeneral" xml:space="preserve"><value>菲利亚将军</value></data>
+  <data name="LordOfFerea" xml:space="preserve"><value>菲利亚领主</value></data>
+  <data name="FereaCrystalOrb" xml:space="preserve"><value>菲利亚水晶球</value></data>
 </root>
