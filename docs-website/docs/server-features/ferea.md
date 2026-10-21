@@ -1,36 +1,122 @@
 ---
 title: Ferea on the extended client
 sidebar_label: Ferea
-description: Local Ferea map and monster configuration for the MuMain extended client.
+description: Ferea hunting grounds and the configurable Lord of Ferea encounter.
 ---
 
 # Ferea on the extended client
 
-The Season 6 configuration includes Ferea as network map 112. It uses the
-extended MuMain client's World113 assets. A character at level 400 can enter
-through the Ferea warp entry. The entry gate places the character near
-coordinates 236, 152. The map also has a provisional Baski spawn near
-215, 165 (monster number 900). Ferea Knight, Archer, and Fighter also spawn in
-six hunting locations each. These three monster types currently have no item
-drops; their combat values are adjusted for this Season 6 configuration.
+The Season 6 configuration includes Ferea as network map 112 with World113 terrain.
+The warp costs 50,000 Zen, requires level 400, and arrives near 236,152.
+The isolated Baski prototype (900) remains near 215,165. Ordinary Knights (730),
+Archers (731), and Fighters (732) keep their hunting spawns.
 
-This configuration needs a client package containing World113 terrain, objects,
-textures, the Baski model and textures, and `Monster286` through `Monster291`
-with their matching textures. These monster models are native v14 BMD files;
-the extended MuMain loader reads them directly. The Ferea General, Lord of
-Ferea, and Crystal Orb have definitions for visual and configuration checks,
-but do not spawn automatically. The crystal and boss fight, item drops, and
-event timing have not yet been implemented. Baski remains an integration
-prototype.
+## Lord of Ferea encounter
 
-On an existing installation, back up the configuration database, publish the
-server and client from compatible revisions, then use the admin panel's data
-updates to apply **Add Ferea map** and **Add Ferea monsters**. If the earlier
-**Add Baski prototype** update was installed, apply its new version. Restart the game
-server after applying the updates so it reloads the new map and monster
-configuration. Confirm the entry gate, terrain collision, monster appearance,
-and a return warp with a real client. Merely passing initializer tests does not
-establish that the map renders correctly in a client.
+Step into the entrance trigger at 110–114,58–62 (center 112,60) while open.
+The server moves you to 46,122 inside the arena (bounds 20–51,107–140).
+The arena can also be reached along its eastern corridor.
 
-The original Season 6 client does not contain these assets; this map is for the
-MuMain extended compatibility gate.
+1. Kill the Knight at 28,120, Archer at 32,120, and Fighter at 30,118.
+   The Crystal Orb (735) at 30,120 rejects all damage while any guardian lives.
+2. Destroy the Orb. Entry closes and Lord (734) appears at 30,120. Only living
+   characters already inside participate. Late arrivals and returning characters
+   cannot damage encounter monsters and are moved outside on the next update.
+3. At 75%, 50%, and 25% HP the Lord stops taking damage. Large hits cannot skip
+   gates; each gate happens once even if the Lord heals above an earlier threshold.
+4. Roar drains nearby participants' Mana and AG. General (733) appears at 38,120,
+   the Lord returns to his throne, and three reinforcements join. The Lord is
+   invulnerable and regenerates until the General dies. Then resume damaging him.
+5. Defeat the Lord after the final General. All surviving encounter monsters are
+   removed and players move to 54,122. There are **no item or Zen rewards** from
+   any encounter monster, regardless of global drop settings.
+
+The Lord attacks normally, periodically uses an area attack, and places delayed
+mines under selected participants. The blue warning gives three seconds to move.
+Damage is checked at the original placement point. Existing combat views are used;
+custom ground circles and retail skill animations are outside this implementation.
+
+No living participants for 60 continuous seconds resets the battle with fresh
+Orb and guardians. A 30-minute limit also resets it. Victory waits a random 12–24
+hours. Cooldowns are in memory; server restarts reopen the arena. Death or leaving
+revokes participation for that battle, including attempts to return by summon.
+
+## Installation and configuration
+
+Fresh Season 6 databases include the waves and an active **Ferea encounter** plugin.
+Existing installations apply **Add Ferea encounter**. Its dependency is **Add Ferea
+monsters** version 4, which depends on **Add Ferea map**. The update fills missing
+wave spawns and feature configuration, preserving existing operator settings and
+remaining idempotent. Restart the server after installation or configuration edits.
+A running encounter retains its original plugin configuration.
+
+Plugin settings control bounds, entry/arrival/ejection points, wave numbers,
+HP gates, regeneration, attack ranges, timers and cooldowns. Monster definitions
+control ordinary combat stats. Wave spawns control positions, quantities and
+optional `MaximumHealthOverride`. Invalid settings, quantities or terrain fail
+closed with a server log entry.
+
+| Wave | Purpose | Monsters |
+| --- | --- | --- |
+| 20 | Crystal Orb | 735 × 1 |
+| 21 | Guardians | 730, 731, 732 × 1 |
+| 22 | Lord | 734 × 1 |
+| 23 | General | 733 × 1 |
+| 24 | Reinforcements per phase | 730, 731, 732 × 1 |
+
+Orb, Lord and General waves require exactly one monster each. Event waves use
+`OnceAtWaveStart`; the ordinary map initializer must not spawn them. Encounter
+spawns use `NullDropGenerator`: maximum item drops zero alone would not prevent Zen.
+Native IDs 730–735 are sent directly to MuMain, without the 700–706 remapping.
+
+## Reference facts and implementation choices
+
+[Webzen's Season 11 announcement](https://muonline.webzen.com/en/events/season11-part1)
+confirms Ferea, its Knights and Lord. Its detailed Ferea guide returned 404 when
+checked on 21 October 2026; it does not establish phase thresholds or timings.
+
+The public [MU Online Fanz Ferea guide](https://muonlinefanz.com/tools/maps/data/mapdb/Ferea.php)
+describes Orb activation, closed entry, abandonment, Roar, General protection and
+healing. These are reference descriptions, not source code. Public guides disagree
+about coordinates, balance and later-season mechanics.
+
+The 75/50/25% gates, three guardians, reinforcement quantities, arena placement on
+shipped walkable terrain, 30-minute limit and regeneration of 0.25% maximum HP per
+Roar victim per second (at least one recovery unit) are editable OpenMU choices,
+not verified Webzen formulas. This is a Season 6 balance adaptation without elemental
+combat. No decompiled server source was used.
+
+## Runtime acceptance test without persistence changes
+
+Use a disposable server or an attached .NET debugger. Obtain the live encounter via
+`gameContext.FeaturePlugIns.GetPlugIn<FereaEncounterPlugIn>().GetEncounter(gameContext)`.
+Use `GetNpcsInRange` to find live guardians/Orb and set their instance `Health` to 1.
+The Orb must still reject damage until every guardian dies. Kill by attacking;
+do not remove or dispose the Orb, because its death activates the encounter.
+
+Once Lord appears, pause execution and apply an instance-only maximum-health element:
+
+```csharp
+var lord = encounter.Lord;
+var healthElement = new SimpleElement(
+    10000 - lord.Attributes[Stats.MaximumHealth], AggregateType.AddRaw);
+lord.Attributes.AddElement(healthElement, Stats.MaximumHealth);
+lord.Health = 10000;
+```
+
+This changes only the live attribute holder, not definitions or spawn areas. Gates
+become 7500/5000/2500 HP. Set each newly summoned General's instance `Health` to 1.
+Verify Lord immunity (normal, reflected, poison and bleed), regeneration while the
+General lives, all three phases, late entry, player death, victory, no items/Zen,
+and cleanup of every reinforcement. Restore the live Lord with:
+
+```csharp
+lord.Attributes.RemoveElement(healthElement, Stats.MaximumHealth);
+lord.Health = (int)lord.Attributes[Stats.MaximumHealth];
+```
+
+Resetting the encounter disposes instance overrides. Restarting clears its cooldown
+and recreates normal configured monsters. No persistence save is involved. For reset,
+leave/disconnect all participants, wait 60 seconds, and reenter for fresh Orb/guards.
+For cooldown timing, use the automated controlled-clock tests or a separate disposable
+configuration; do not shorten the operator's production cooldown.

@@ -18,8 +18,9 @@ public static class GameContextTestHelper
     /// Creates a game context.
     /// </summary>
     /// <param name="additionalPlugInConfigurations">Additional plugin configurations which should be applied, e.g. to deactivate specific plugins.</param>
+    /// <param name="dropGenerator">An optional drop generator to verify reward behavior.</param>
     /// <returns>The game context with MuHelperFeaturePlugIn configured.</returns>
-    public static IGameContext CreateGameContext(IEnumerable<PlugInConfiguration>? additionalPlugInConfigurations = null)
+    public static IGameContext CreateGameContext(IEnumerable<PlugInConfiguration>? additionalPlugInConfigurations = null, IDropGenerator? dropGenerator = null)
     {
         var contextProvider = new InMemoryPersistenceContextProvider();
         var context = contextProvider.CreateNewContext();
@@ -33,7 +34,8 @@ public static class GameContextTestHelper
         gameConfig.MaximumInventoryMoney = int.MaxValue;
         gameConfig.ItemDropDuration = TimeSpan.FromMinutes(1);
 
-        var mapInitializer = new MapInitializer(gameConfig, new NullLogger<MapInitializer>(), NullDropGenerator.Instance, null);
+        dropGenerator ??= NullDropGenerator.Instance;
+        var mapInitializer = new MapInitializer(gameConfig, new NullLogger<MapInitializer>(), dropGenerator, null);
         var plugInConfigurations = new List<PlugInConfiguration>
         {
             new ()
@@ -49,7 +51,7 @@ public static class GameContextTestHelper
         }
 
         var plugInManager = new PlugInManager(plugInConfigurations, new NullLoggerFactory(), null, null);
-        var gameContext = new GameContext(gameConfig, contextProvider, mapInitializer, new NullLoggerFactory(), plugInManager, NullDropGenerator.Instance, new ConfigurationChangeMediator());
+        var gameContext = new GameContext(gameConfig, contextProvider, mapInitializer, new NullLoggerFactory(), plugInManager, dropGenerator, new ConfigurationChangeMediator());
         mapInitializer.PlugInManager = gameContext.PlugInManager;
         mapInitializer.PathFinderPool = gameContext.PathFinderPool;
 
