@@ -27,6 +27,7 @@ internal class FereaEncounterDataTest
         using var context = provider.CreateNewContext();
         var configuration = (await context.GetAsync<GameConfiguration>().ConfigureAwait(false)).Single();
         AssertEncounter(configuration);
+        AssertRewards(configuration);
         var feature = configuration.PlugInConfigurations.Single(p => p.TypeId == typeof(FereaEncounterPlugIn).GUID);
         Assert.That(feature.IsActive, Is.True);
         var dataSource = new GameConfigurationDataSource(NullLogger<GameConfigurationDataSource>.Instance, provider);
@@ -45,6 +46,14 @@ internal class FereaEncounterDataTest
         using var context = provider.CreateNewContext();
         var configuration = (await context.GetAsync<GameConfiguration>().ConfigureAwait(false)).Single();
         var map = configuration.Maps.Single(m => m.Number == 112);
+        var lord = configuration.Monsters.Single(m => m.Number == 734);
+        foreach (var reward in lord.DropItemGroups.ToArray())
+        {
+            lord.DropItemGroups.Remove(reward);
+            configuration.DropItemGroups.Remove(reward);
+            await context.DeleteAsync(reward).ConfigureAwait(false);
+        }
+
         var hunting = map.MonsterSpawns.Where(s => s.SpawnTrigger == SpawnTrigger.Automatic).ToArray();
         var feature = configuration.PlugInConfigurations.Single(p => p.TypeId == typeof(FereaEncounterPlugIn).GUID);
         configuration.PlugInConfigurations.Remove(feature);
@@ -58,6 +67,9 @@ internal class FereaEncounterDataTest
         var update = new AddFereaEncounterUpdatePlugIn();
         await update.ApplyUpdateAsync(context, configuration).ConfigureAwait(false);
         AssertEncounter(configuration);
+        AssertRewards(configuration);
+        var rewardGroup = lord.DropItemGroups.Single();
+        rewardGroup.Chance = 0.25;
         feature = configuration.PlugInConfigurations.Single(p => p.TypeId == typeof(FereaEncounterPlugIn).GUID);
         feature.IsActive = false;
         feature.SetConfiguration(new FereaEncounterConfiguration { RegenerationPercentPerPlayer = 0.5f }, null);
@@ -75,7 +87,46 @@ internal class FereaEncounterDataTest
             Assert.That(feature.IsActive, Is.False);
             Assert.That(feature.CustomConfiguration, Is.EqualTo(customJson));
             Assert.That(firstSpawn.Quantity, Is.EqualTo(2));
+            Assert.That(lord.DropItemGroups.Single(), Is.SameAs(rewardGroup));
+            Assert.That(rewardGroup.Chance, Is.EqualTo(0.25));
         });
+    }
+
+    /// <summary>Verifies the version-one encounter is upgraded without changing existing plugin settings.</summary>
+    [Test]
+    public async Task VersionOneEncounterReceivesRewardsWithoutChangingSettingsAsync()
+    {
+        var provider = new InMemoryPersistenceContextProvider();
+        await new VersionSeasonSix.DataInitialization(provider, new NullLoggerFactory()).CreateInitialDataAsync(1, false).ConfigureAwait(false);
+        using var context = provider.CreateNewContext();
+        var configuration = (await context.GetAsync<GameConfiguration>().ConfigureAwait(false)).Single();
+        var lord = configuration.Monsters.Single(m => m.Number == 734);
+        foreach (var reward in lord.DropItemGroups.ToArray())
+        {
+            lord.DropItemGroups.Remove(reward);
+            configuration.DropItemGroups.Remove(reward);
+            await context.DeleteAsync(reward).ConfigureAwait(false);
+        }
+
+        var update = new AddFereaEncounterUpdatePlugIn();
+        var installed = (await context.GetAsync<ConfigurationUpdate>().ConfigureAwait(false)).Single(u => u.Key == update.Key);
+        installed.Version = 1;
+        var feature = configuration.PlugInConfigurations.Single(p => p.TypeId == typeof(FereaEncounterPlugIn).GUID);
+        var settings = feature.CustomConfiguration;
+        await update.ApplyUpdateAsync(context, configuration).ConfigureAwait(false);
+        AssertRewards(configuration);
+        Assert.That(installed.Version, Is.EqualTo(2));
+        Assert.That(feature.CustomConfiguration, Is.EqualTo(settings));
+        await update.ApplyUpdateAsync(context, configuration).ConfigureAwait(false);
+        AssertRewards(configuration);
+    }
+
+    private static void AssertRewards(GameConfiguration configuration)
+    {
+        var reward = configuration.Monsters.Single(m => m.Number == 734).DropItemGroups.Single();
+        Assert.That(reward.Chance, Is.EqualTo(1));
+        Assert.That(reward.PossibleItems.Select(i => (i.Group, i.Number)), Is.EquivalentTo(new[] { ((byte)14, (short)13), ((byte)14, (short)14), ((byte)12, (short)15) }));
+        Assert.That(configuration.DropItemGroups.Count(g => g.GetId() == reward.GetId()), Is.EqualTo(1));
     }
 
     private static void AssertEncounter(GameConfiguration configuration)

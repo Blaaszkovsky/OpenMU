@@ -231,4 +231,7 @@
   <data name="FlameOfCondor" xml:space="preserve">
     <value>神鹰火种</value>
   </data>
+  <data name="FereaVictory" xml:space="preserve">
+    <value>菲利亚领主：胜利宝石</value>
+  </data>
 </root>

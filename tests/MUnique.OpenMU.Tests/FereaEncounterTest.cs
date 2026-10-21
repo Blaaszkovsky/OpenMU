@@ -39,6 +39,7 @@ public class FereaEncounterTest
         var configuration = new FereaEncounterConfiguration
         {
             MapNumber = 0,
+            VictoryItemDropCount = 0,
             RegenerationPercentPerPlayer = 1,
             VictoryCooldownMinimum = TimeSpan.FromSeconds(10),
             VictoryCooldownMaximum = TimeSpan.FromSeconds(10),
@@ -221,7 +222,7 @@ public class FereaEncounterTest
         Assert.That(this._encounter.State, Is.EqualTo(FereaEncounterState.Orb));
     }
 
-    /// <summary>Verifies kills cannot reach the configured item or money generator, including its delayed execution.</summary>
+    /// <summary>Verifies disabled rewards cannot reach the item or money generator, including its delayed execution.</summary>
     [Test]
     public async Task EncounterDoesNotGenerateItemsOrZenAsync()
     {
@@ -240,6 +241,116 @@ public class FereaEncounterTest
         await Task.Delay(TimeSpan.FromMilliseconds(1200)).ConfigureAwait(false);
         this._dropGenerator.VerifyNoOtherCalls();
         Assert.That(this._encounter.State, Is.EqualTo(FereaEncounterState.Cooldown));
+    }
+
+    /// <summary>Verifies one configured item roll and WCoin award happen only once after victory.</summary>
+    /// <param name="minimum">The inclusive minimum award.</param>
+    /// <param name="maximum">The inclusive maximum award.</param>
+    [TestCase(7, 7)]
+    [TestCase(1, 3)]
+    [TestCase(int.MaxValue, int.MaxValue)]
+    public async Task VictoryAwardsConfiguredRewardsOnceAsync(int minimum, int maximum)
+    {
+        this._encounter.Configuration.VictoryItemDropCount = 1;
+        this._encounter.Configuration.VictoryWCoinCChance = 1;
+        this._encounter.Configuration.VictoryWCoinCMinimum = minimum;
+        this._encounter.Configuration.VictoryWCoinCMaximum = maximum;
+        var item = new MUnique.OpenMU.Persistence.BasicModel.Item
+        {
+            Definition = new MUnique.OpenMU.Persistence.BasicModel.ItemDefinition { Width = 1, Height = 1 },
+        };
+        this._dropGenerator.Setup(g => g.GenerateItemDrop(It.IsAny<IEnumerable<MUnique.OpenMU.DataModel.Configuration.DropItemGroup>>()))
+            .Returns((item, null, MUnique.OpenMU.DataModel.Configuration.ItemDropEffect.Undefined));
+        await this.StartBattleAsync().ConfigureAwait(false);
+        await this.DefeatLordAsync().ConfigureAwait(false);
+        await Task.WhenAll(Enumerable.Range(0, 10).Select(_ => this._encounter.TickAsync().AsTask())).ConfigureAwait(false);
+        var drop = this._map.GetDropsInRange(new Point(30, 120), 255).OfType<DroppedItem>().Single();
+        Assert.That(drop.Item, Is.SameAs(item));
+        Assert.That(drop.IsPlayerAnOwner(this._player), Is.True);
+        var outsider = await this.CreatePlayerAsync(new Point(31, 120)).ConfigureAwait(false);
+        Assert.That(drop.IsPlayerAnOwner(outsider), Is.False);
+        Assert.That(this._player.Account!.WCoinC, Is.InRange(minimum, maximum));
+        this._dropGenerator.Verify(g => g.GenerateItemDrop(It.IsAny<IEnumerable<MUnique.OpenMU.DataModel.Configuration.DropItemGroup>>()), Times.Once);
+        this._dropGenerator.VerifyNoOtherCalls();
+    }
+
+    /// <summary>Verifies an item-generation failure cannot duplicate coins or retain summoned monsters.</summary>
+    [Test]
+    public async Task ItemRewardFailureStillCompletesVictoryOnceAsync()
+    {
+        this._encounter.Configuration.VictoryItemDropCount = 1;
+        this._encounter.Configuration.VictoryWCoinCChance = 1;
+        this._encounter.Configuration.VictoryWCoinCMinimum = 1;
+        this._encounter.Configuration.VictoryWCoinCMaximum = 1;
+        this._dropGenerator.Setup(g => g.GenerateItemDrop(It.IsAny<IEnumerable<MUnique.OpenMU.DataModel.Configuration.DropItemGroup>>()))
+            .Throws(new InvalidOperationException("Test reward generation failure."));
+        await this.StartBattleAsync().ConfigureAwait(false);
+        await this.DefeatLordAsync().ConfigureAwait(false);
+        await this._encounter.TickAsync().ConfigureAwait(false);
+        Assert.That(this._encounter.State, Is.EqualTo(FereaEncounterState.Cooldown));
+        Assert.That(this.GetMonsters(), Is.Empty);
+        Assert.That(this._player.Account!.WCoinC, Is.EqualTo(1));
+        this._dropGenerator.Verify(g => g.GenerateItemDrop(It.IsAny<IEnumerable<MUnique.OpenMU.DataModel.Configuration.DropItemGroup>>()), Times.Once);
+        this._dropGenerator.VerifyNoOtherCalls();
+    }
+
+    /// <summary>Verifies resets never award items or coins, even with rewards enabled.</summary>
+    [Test]
+    public async Task FailedBattleDoesNotAwardRewardsAsync()
+    {
+        this._encounter.Configuration.VictoryItemDropCount = 1;
+        this._encounter.Configuration.VictoryWCoinCChance = 1;
+        this._encounter.Configuration.VictoryWCoinCMinimum = 7;
+        this._encounter.Configuration.VictoryWCoinCMaximum = 7;
+        await this.StartBattleAsync().ConfigureAwait(false);
+        this._clock.Advance(this._encounter.Configuration.BattleTimeout);
+        await this._encounter.TickAsync().ConfigureAwait(false);
+        Assert.That(this._player.Account!.WCoinC, Is.Zero);
+        Assert.That(this._map.GetDropsInRange(new Point(30, 120), 255), Is.Empty);
+        this._dropGenerator.VerifyNoOtherCalls();
+    }
+
+    /// <summary>Verifies dead and revoked participants do not receive rewards and balances cannot overflow.</summary>
+    [Test]
+    public async Task OnlySurvivingParticipantsReceiveCoinsAsync()
+    {
+        this._encounter.Configuration.VictoryWCoinCChance = 1;
+        this._encounter.Configuration.VictoryWCoinCMinimum = 7;
+        this._encounter.Configuration.VictoryWCoinCMaximum = 7;
+        var dead = await this.CreatePlayerAsync(new Point(32, 120)).ConfigureAwait(false);
+        var departed = await this.CreatePlayerAsync(new Point(33, 120)).ConfigureAwait(false);
+        await this.StartBattleAsync().ConfigureAwait(false);
+        dead.IsAlive = false;
+        this._encounter.Revoke(departed);
+        this._player.Account!.WCoinC = int.MaxValue - 1;
+        await this.DefeatLordAsync().ConfigureAwait(false);
+        Assert.That(this._player.Account.WCoinC, Is.EqualTo(int.MaxValue));
+        Assert.That(dead.Account!.WCoinC, Is.Zero);
+        Assert.That(departed.Account!.WCoinC, Is.Zero);
+    }
+
+    /// <summary>Verifies no regeneration is awarded when Roar hits no participants.</summary>
+    [Test]
+    public async Task RoarWithoutVictimsDoesNotHealAsync()
+    {
+        await this._player.MoveAsync(new Point(46, 130)).ConfigureAwait(false);
+        await this.StartBattleAsync().ConfigureAwait(false);
+        await this._encounter.Lord!.ReflectDamageAsync(this._player, 10000).ConfigureAwait(false);
+        await this._encounter.TickAsync().ConfigureAwait(false);
+        this._clock.Advance(TimeSpan.FromSeconds(1));
+        await this._encounter.TickAsync().ConfigureAwait(false);
+        Assert.That(this._encounter.Lord.Health, Is.EqualTo(750));
+    }
+
+    /// <summary>Verifies missing reinforcements fail closed before any monsters are spawned.</summary>
+    [Test]
+    public async Task MissingReinforcementWaveFailsClosedAsync()
+    {
+        await this._encounter.DisposeAsync().ConfigureAwait(false);
+        this._map.Definition.MonsterSpawns.Remove(this._map.Definition.MonsterSpawns.Single(s => s.WaveNumber == 24));
+        this._encounter = new FereaEncounter(this._gameContext, new FereaEncounterConfiguration { MapNumber = 0 }, this._clock);
+        Assert.ThrowsAsync<InvalidOperationException>(async () => await this._encounter.TickAsync().ConfigureAwait(false));
+        Assert.That(this.GetMonsters(), Is.Empty);
     }
 
     /// <summary>Verifies live data updates cannot make the ordinary initializer spawn encounter waves.</summary>
@@ -335,6 +446,20 @@ public class FereaEncounterTest
     {
         await this.GetMonster(730).ApplyPoisonDamageAsync(this._player, 10000).ConfigureAwait(false);
         await this.GetMonster(735).ApplyPoisonDamageAsync(this._player, 10000).ConfigureAwait(false);
+        await this._encounter.TickAsync().ConfigureAwait(false);
+    }
+
+    private async ValueTask DefeatLordAsync()
+    {
+        for (var phase = 0; phase < 3; phase++)
+        {
+            await this._encounter.Lord!.ApplyPoisonDamageAsync(this._player, 10000).ConfigureAwait(false);
+            await this._encounter.TickAsync().ConfigureAwait(false);
+            await this._encounter.General!.ApplyPoisonDamageAsync(this._player, 10000).ConfigureAwait(false);
+            await this._encounter.TickAsync().ConfigureAwait(false);
+        }
+
+        await this._encounter.Lord!.ApplyPoisonDamageAsync(this._player, 10000).ConfigureAwait(false);
         await this._encounter.TickAsync().ConfigureAwait(false);
     }
 

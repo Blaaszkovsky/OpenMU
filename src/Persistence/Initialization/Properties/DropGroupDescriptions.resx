@@ -231,4 +231,7 @@
   <data name="FlameOfCondor" xml:space="preserve">
     <value>Flame of Condor</value>
   </data>
+  <data name="FereaVictory" xml:space="preserve">
+    <value>Lord of Ferea: victory jewels</value>
+  </data>
 </root>

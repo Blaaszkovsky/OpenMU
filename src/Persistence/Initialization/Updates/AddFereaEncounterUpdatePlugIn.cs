@@ -34,6 +34,12 @@ public sealed class AddFereaEncounterUpdatePlugIn : UpdatePlugInBase
     public override DateTime CreatedAt => new(2026, 10, 21, 0, 0, 0, DateTimeKind.Utc);
 
     /// <inheritdoc />
+    public override int Version => 2;
+
+    /// <inheritdoc />
+    public override DateTime UpdatedAt => new(2026, 10, 21, 0, 0, 0, DateTimeKind.Utc);
+
+    /// <inheritdoc />
     public override IEnumerable<UpdateDependency> DependsOn => [new UpdateDependency(typeof(AddBaskiPrototypeUpdatePlugIn).GUID, minVersion: 4)];
 
     /// <inheritdoc />

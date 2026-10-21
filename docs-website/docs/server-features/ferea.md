@@ -29,8 +29,9 @@ The arena can also be reached along its eastern corridor.
    invulnerable and regenerates until the General dies. Then resume damaging him.
 5. Defeat the Lord after the final General. All surviving encounter monsters are
    removed. Victorious participants remain inside the throne room; newcomers
-   cannot join during cooldown. There are **no item or Zen rewards** from any
-   encounter monster, regardless of global drop settings.
+   cannot join during cooldown. By default, one Jewel of Bless, Soul or Chaos is
+   randomly dropped at the Lord's position with normal pickup priority for living
+   participants. Other encounter monsters give no items or Zen.
 
 The Lord attacks normally, periodically uses an area attack, and places delayed
 mines under selected participants. The blue warning gives three seconds to move.
@@ -47,7 +48,7 @@ revokes participation for that battle, including attempts to return by summon.
 Fresh Season 6 databases include the waves and an active **Ferea encounter** plugin.
 Existing installations apply **Add Ferea encounter**. Its dependency is **Add Ferea
 monsters** version 4, which depends on **Add Ferea map**. The update fills missing
-wave spawns and feature configuration, preserving existing operator settings and
+wave spawns, feature configuration and a missing Lord victory jewel table, preserving existing operator settings and
 remaining idempotent. Restart the server after installation or configuration edits.
 A running encounter retains its original plugin configuration.
 
@@ -56,6 +57,21 @@ HP gates, regeneration, attack ranges, timers and cooldowns. Monster definitions
 control ordinary combat stats. Wave spawns control positions, quantities and
 optional `MaximumHealthOverride`. Invalid settings, quantities or terrain fail
 closed with a server log entry.
+
+`VictoryItemDropCount` controls the number of item rolls (default 1; 0 disables
+items). Each roll selects from the Lord monster definition's `DropItemGroups`
+using their normal probabilities; edit those groups to choose items or chances.
+Global hunting drop tables do not affect victory rewards. Zen reward groups are
+not supported. Existing reward tables are preserved when applying update version 2.
+
+Optional WCoinC rewards are disabled by default. Set `VictoryWCoinCChance` from
+0 to 1 and `VictoryWCoinCMinimum`/`VictoryWCoinCMaximum` to an inclusive amount
+range. Each living participant receives an independent roll. Awards are serialized
+with the player's saves, immediately saved, and capped at the account balance limit.
+Dead, departed and late-arriving characters receive no victory rewards. Failure
+or timeout gives no reward. Repeated encounter updates cannot award the same victory
+twice. The encounter and its cooldown are in memory: there is no durable reward
+queue or replay after a server crash. Check server logs for failed reward saves.
 
 | Wave | Purpose | Monsters |
 | --- | --- | --- |
@@ -68,6 +84,7 @@ closed with a server log entry.
 Orb, Lord and General waves require exactly one monster each. Event waves use
 `OnceAtWaveStart`; the ordinary map initializer must not spawn them. Encounter
 spawns use `NullDropGenerator`: maximum item drops zero alone would not prevent Zen.
+Only encounter victory explicitly rolls the Lord's reward groups.
 Native IDs 730–735 are sent directly to MuMain, without the 700–706 remapping.
 
 ## Reference facts and implementation choices
@@ -83,7 +100,7 @@ about coordinates, balance and later-season mechanics.
 
 The 75/50/25% gates, three guardians, reinforcement quantities, arena placement on
 shipped walkable terrain, 30-minute limit and regeneration of 0.25% maximum HP per
-Roar victim per second (at least one recovery unit) are editable OpenMU choices,
+Roar victim per second (zero if nobody was hit) are editable OpenMU choices,
 not verified Webzen formulas. This is a Season 6 balance adaptation without elemental
 combat. No decompiled server source was used.
 
@@ -108,7 +125,8 @@ lord.Health = 10000;
 This changes only the live attribute holder, not definitions or spawn areas. Gates
 become 7500/5000/2500 HP. Set each newly summoned General's instance `Health` to 1.
 Verify Lord immunity (normal, reflected, poison and bleed), regeneration while the
-General lives, all three phases, late entry, player death, victory, no items/Zen,
+General lives, all three phases, late entry, player death, victory, the configured
+item reward and no Zen,
 and cleanup of every reinforcement. Restore the live Lord with:
 
 ```csharp

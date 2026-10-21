@@ -166,6 +166,22 @@ public sealed class FereaEncounterConfiguration
     public int MaximumMines { get; set; } = 5;
 
     /// <summary>
+    /// Gets or sets the number of victory rolls against the Lord's configured drop groups. Zero disables item rewards.
+    /// </summary>
+    public int VictoryItemDropCount { get; set; } = 1;
+
+    /// <summary>
+    /// Gets or sets the independent chance, from zero to one, for each surviving participant to receive WCoinC.
+    /// </summary>
+    public double VictoryWCoinCChance { get; set; }
+
+    /// <summary>Gets or sets the inclusive minimum WCoinC reward.</summary>
+    public int VictoryWCoinCMinimum { get; set; }
+
+    /// <summary>Gets or sets the inclusive maximum WCoinC reward.</summary>
+    public int VictoryWCoinCMaximum { get; set; }
+
+    /// <summary>
     /// Checks whether a point belongs to the encounter arena.
     /// </summary>
     /// <param name="point">The point.</param>
@@ -183,7 +199,7 @@ public sealed class FereaEncounterConfiguration
             || !this.Contains(new Point(this.ArrivalX, this.ArrivalY))
             || this.Contains(new Point(this.EjectionX, this.EjectionY))
             || new[] { this.OrbWave, this.GuardianWave, this.LordWave, this.GeneralWave, this.ReinforcementWave }.Distinct().Count() != 5
-            || this.PhaseHealthPercentages.Any(p => p <= 0 || p >= 100)
+            || this.PhaseHealthPercentages is null || this.PhaseHealthPercentages.Any(p => p <= 0 || p >= 100)
             || !this.PhaseHealthPercentages.SequenceEqual(this.PhaseHealthPercentages.Distinct().OrderDescending())
             || this.AbandonmentTimeout <= TimeSpan.Zero || this.BattleTimeout <= TimeSpan.Zero
             || this.VictoryCooldownMinimum < TimeSpan.Zero || this.VictoryCooldownMaximum < this.VictoryCooldownMinimum
@@ -191,7 +207,10 @@ public sealed class FereaEncounterConfiguration
             || !float.IsFinite(this.RegenerationPercentPerPlayer) || this.RegenerationPercentPerPlayer < 0
             || this.RoarRadius <= 0 || this.BrandishInterval <= TimeSpan.Zero || this.BrandishRadius <= 0
             || this.MineInterval <= TimeSpan.Zero || this.MineDelay < TimeSpan.Zero
-            || this.MineRadius <= 0 || this.MaximumMines is < 1 or > 5)
+            || this.MineRadius <= 0 || this.MaximumMines is < 1 or > 5
+            || this.VictoryItemDropCount is < 0 or > 100
+            || !double.IsFinite(this.VictoryWCoinCChance) || this.VictoryWCoinCChance is < 0 or > 1
+            || this.VictoryWCoinCMinimum < 0 || this.VictoryWCoinCMaximum < this.VictoryWCoinCMinimum)
         {
             throw new InvalidOperationException("Invalid Ferea encounter configuration.");
         }

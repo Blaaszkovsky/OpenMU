@@ -175,7 +175,7 @@ public sealed class FereaEncounter
                 }
                 else if (now >= this._nextRegeneration)
                 {
-                    var amount = (double)lord.Attributes[Stats.MaximumHealth] * this.Configuration.RegenerationPercentPerPlayer / 100 * Math.Max(1, this._roarVictims);
+                    var amount = (double)lord.Attributes[Stats.MaximumHealth] * this.Configuration.RegenerationPercentPerPlayer / 100 * this._roarVictims;
                     lord.RecoverHealth((int)Math.Min(int.MaxValue, amount));
                     this._nextRegeneration = now + this.Configuration.RegenerationInterval;
                 }
@@ -320,9 +320,9 @@ public sealed class FereaEncounter
             }
         }
 
-        if (!this.GetWave(this.Configuration.GuardianWave).Any())
+        if (!this.GetWave(this.Configuration.GuardianWave).Any() || !this.GetWave(this.Configuration.ReinforcementWave).Any())
         {
-            throw new InvalidOperationException("Ferea requires Orb guardians.");
+            throw new InvalidOperationException("Ferea requires Orb guardians and phase reinforcements.");
         }
 
         foreach (var spawn in new[] { this.Configuration.OrbWave, this.Configuration.GuardianWave, this.Configuration.LordWave, this.Configuration.GeneralWave, this.Configuration.ReinforcementWave }.SelectMany(this.GetWave))
@@ -440,8 +440,15 @@ public sealed class FereaEncounter
         var minimum = this.Configuration.VictoryCooldownMinimum.TotalSeconds;
         var maximum = this.Configuration.VictoryCooldownMaximum.TotalSeconds;
         this._deadline = now + (victory ? TimeSpan.FromSeconds(minimum + (Random.Shared.NextDouble() * (maximum - minimum))) : this.Configuration.FailureCooldown);
+        if (victory && this._lord is { } lord)
+        {
+            // Publish cooldown before rewards. Concurrent/repeated ticks must never roll a second victory reward.
+            await this.RewardVictoryAsync(lord).ConfigureAwait(false);
+        }
+
         await this.RemoveMonstersAsync().ConfigureAwait(false);
         await this.NotifyAsync(victory ? "FereaEncounterVictory" : "FereaEncounterReset").ConfigureAwait(false);
+
         // Keep winners registered through cooldown so the late-entry guard does not remove them on the next tick.
         if (!victory)
         {
@@ -454,6 +461,59 @@ public sealed class FereaEncounter
                 && (!victory || !this._participants.ContainsKey(p))))
             {
                 await this.EjectAsync(player).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async ValueTask RewardVictoryAsync(Monster lord)
+    {
+        var winners = this._participants.Keys.Where(p => IsLiving(p) && p.CurrentMap == this._map
+            && this.Configuration.Contains(p.Position)).ToArray();
+        if (winners.Length == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            for (var index = 0; index < this.Configuration.VictoryItemDropCount; index++)
+            {
+                var (item, _, _) = this._gameContext.DropGenerator.GenerateItemDrop(lord.Definition.DropItemGroups);
+                if (item is not null)
+                {
+                    var drop = new DroppedItem(item, lord.Position, lord.CurrentMap, null, winners);
+                    await lord.CurrentMap.AddAsync(drop).ConfigureAwait(false);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            this._gameContext.LoggerFactory.CreateLogger<FereaEncounter>().LogError(exception, "Could not create a Ferea victory item reward.");
+        }
+
+        foreach (var player in winners)
+        {
+            if (this.Configuration.VictoryWCoinCChance <= Random.Shared.NextDouble())
+            {
+                continue;
+            }
+
+            var amount = (int)Random.Shared.NextInt64(this.Configuration.VictoryWCoinCMinimum, (long)this.Configuration.VictoryWCoinCMaximum + 1);
+            try
+            {
+                await player.RunPersistenceExclusiveAsync(async () =>
+                {
+                    if (player.Account is { } account)
+                    {
+                        account.WCoinC = (int)Math.Min(int.MaxValue, (long)account.WCoinC + amount);
+                        await player.SaveProgressAsync().ConfigureAwait(false);
+                    }
+                }).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                // Like other in-session coin awards, failed saves retain the mutation for the next progress save.
+                player.Logger.LogError(exception, "Could not save the Ferea victory WCoinC reward of {amount} for {player}.", amount, player);
             }
         }
     }
