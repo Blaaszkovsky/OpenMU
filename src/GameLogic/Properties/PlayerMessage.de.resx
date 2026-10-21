@@ -988,4 +988,10 @@ Inventarerweiterungen: {18}</value>
   <data name="ItemBoxRequiresLevel" xml:space="preserve">
     <value>Du musst Level {0} sein, um diese Box zu öffnen.</value>
   </data>
+  <data name="FereaEncounterStarted" xml:space="preserve"><value>Die Kristallkugel wurde zerstört. Besiegt den Fürsten von Ferea!</value></data>
+  <data name="FereaGeneralSummoned" xml:space="preserve"><value>Der General schützt den Fürsten. Besiegt den General, um die Heilung zu stoppen!</value></data>
+  <data name="FereaGeneralDefeated" xml:space="preserve"><value>Der General wurde besiegt. Der Fürst von Ferea ist wieder verwundbar.</value></data>
+  <data name="FereaMineWarning" xml:space="preserve"><value>Der Fürst hat Minen unter euren Füßen platziert. Bewegt euch weg!</value></data>
+  <data name="FereaEncounterVictory" xml:space="preserve"><value>Der Fürst von Ferea wurde besiegt!</value></data>
+  <data name="FereaEncounterReset" xml:space="preserve"><value>Der Kampf in Ferea ist beendet. Die Arena wird wieder geöffnet.</value></data>
 </root>

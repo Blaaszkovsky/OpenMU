@@ -1099,4 +1099,10 @@ Inventory Extensions: {18}</value>
   <data name="ItemBoxRequiresLevel" xml:space="preserve">
     <value>You need to be level {0} to open this box.</value>
   </data>
+  <data name="FereaEncounterStarted" xml:space="preserve"><value>The Crystal Orb is destroyed. Defeat the Lord of Ferea!</value></data>
+  <data name="FereaGeneralSummoned" xml:space="preserve"><value>Ferea General protects the Lord. Defeat the General to stop the Lord's recovery!</value></data>
+  <data name="FereaGeneralDefeated" xml:space="preserve"><value>The General is defeated. The Lord of Ferea is vulnerable again.</value></data>
+  <data name="FereaMineWarning" xml:space="preserve"><value>The Lord has placed mines beneath your feet. Move away!</value></data>
+  <data name="FereaEncounterVictory" xml:space="preserve"><value>The Lord of Ferea is defeated!</value></data>
+  <data name="FereaEncounterReset" xml:space="preserve"><value>The battle in Ferea has ended. The arena will open again.</value></data>
 </root>

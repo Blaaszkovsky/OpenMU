@@ -73,10 +73,10 @@ internal class FereaMonstersDataTest
             {
                 Assert.That(configuration.Monsters.Count(monster => monster.Number == number), Is.EqualTo(1));
                 var expectedSpawns = number <= 732 ? 6 : 0;
-                Assert.That(map.MonsterSpawns.Count(area => area.MonsterDefinition?.Number == number), Is.EqualTo(expectedSpawns));
+                Assert.That(map.MonsterSpawns.Count(area => area.MonsterDefinition?.Number == number && area.SpawnTrigger == SpawnTrigger.Automatic), Is.EqualTo(expectedSpawns));
             }
 
-            var huntingSpawns = map.MonsterSpawns.Where(area => area.MonsterDefinition?.Number is >= 730 and <= 732).ToArray();
+            var huntingSpawns = map.MonsterSpawns.Where(area => area.MonsterDefinition?.Number is >= 730 and <= 732 && area.SpawnTrigger == SpawnTrigger.Automatic).ToArray();
             Assert.That(huntingSpawns.Select(area => (area.X1, area.Y1)).Distinct().Count(), Is.EqualTo(huntingSpawns.Length));
         });
     }

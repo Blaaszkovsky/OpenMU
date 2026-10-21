@@ -104,7 +104,7 @@ public class MapInitializer : IMapInitializer
 
         var newSpawnRegistration = this._configurationChangeMediator?.RegisterForNew<MonsterSpawnArea, GameMap>(createdMap, async (spawnArea, map) =>
         {
-            if (!Equals(spawnArea.GameMap, map.Definition))
+            if (!Equals(spawnArea.GameMap, map.Definition) || spawnArea.SpawnTrigger != SpawnTrigger.Automatic)
             {
                 return;
             }

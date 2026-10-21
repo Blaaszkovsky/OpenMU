@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <data name="FereaEncounterStarted" xml:space="preserve"><value>水晶球已被摧毁。击败菲利亚领主！</value></data>
+  <data name="FereaGeneralSummoned" xml:space="preserve"><value>菲利亚将军正在保护领主。击败将军以阻止领主恢复生命！</value></data>
+  <data name="FereaGeneralDefeated" xml:space="preserve"><value>将军已被击败。现在可以再次伤害菲利亚领主。</value></data>
+  <data name="FereaMineWarning" xml:space="preserve"><value>领主在你脚下放置了地雷。请立即移开！</value></data>
+  <data name="FereaEncounterVictory" xml:space="preserve"><value>菲利亚领主已被击败！</value></data>
+  <data name="FereaEncounterReset" xml:space="preserve"><value>菲利亚的战斗已结束。竞技场将再次开放。</value></data>
+</root>

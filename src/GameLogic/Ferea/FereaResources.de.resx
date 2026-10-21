@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <data name="Name" xml:space="preserve"><value>Ferea-Kampf</value></data>
+  <data name="Description" xml:space="preserve"><value>Führt den Kampf gegen Kristallkugel, Wächter, Fürst von Ferea und General ohne Gegenstände oder Zen-Belohnungen aus.</value></data>
+  <data name="UpdateName" xml:space="preserve"><value>Ferea-Kampf hinzufügen</value></data>
+  <data name="UpdateDescription" xml:space="preserve"><value>Fügt Ferea-Kampfwellen und einen Eingang hinzu. Aktiviert die Funktion nur, wenn noch keine Konfiguration existiert; vorhandene Einstellungen bleiben erhalten.</value></data>
+</root>

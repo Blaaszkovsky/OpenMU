@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="Name" xml:space="preserve"><value>Ferea encounter</value></data>
+  <data name="Description" xml:space="preserve"><value>Runs the Crystal Orb, guardians, Lord of Ferea and General encounter without item or Zen rewards.</value></data>
+  <data name="UpdateName" xml:space="preserve"><value>Add Ferea encounter</value></data>
+  <data name="UpdateDescription" xml:space="preserve"><value>Adds encounter spawn waves and an entrance in Ferea. Enables the feature if it has no configuration yet; preserves existing feature settings.</value></data>
+</root>
