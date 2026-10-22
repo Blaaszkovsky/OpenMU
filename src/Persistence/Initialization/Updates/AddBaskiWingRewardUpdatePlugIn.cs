@@ -32,6 +32,12 @@ public sealed class AddBaskiWingRewardUpdatePlugIn : UpdatePlugInBase
     public override DateTime CreatedAt => new(2026, 10, 21, 0, 0, 0, DateTimeKind.Utc);
 
     /// <inheritdoc />
+    public override int Version => 2;
+
+    /// <inheritdoc />
+    public override DateTime UpdatedAt => new(2026, 10, 22, 0, 0, 0, DateTimeKind.Utc);
+
+    /// <inheritdoc />
     public override IEnumerable<UpdateDependency> DependsOn =>
     [
         new UpdateDependency(typeof(AddBaskiPrototypeUpdatePlugIn).GUID, minVersion: 4),
@@ -42,6 +48,19 @@ public sealed class AddBaskiWingRewardUpdatePlugIn : UpdatePlugInBase
     protected override ValueTask ApplyAsync(IContext context, GameConfiguration gameConfiguration)
     {
         new BaskiWingRewardInitializer(context, gameConfiguration).Initialize();
+        return ValueTask.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    protected override ValueTask ApplyAsync(IContext context, GameConfiguration gameConfiguration, int? installedVersion)
+    {
+        var initializer = new BaskiWingRewardInitializer(context, gameConfiguration);
+        if (installedVersion == 1)
+        {
+            initializer.BalanceLegacyReward();
+        }
+
+        initializer.Initialize();
         return ValueTask.CompletedTask;
     }
 }

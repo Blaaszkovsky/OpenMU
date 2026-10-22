@@ -1,13 +1,14 @@
 # Wings of Unity 12/245 — local paired-client acceptance (2026-10-21)
 
-Status: **ACCEPTED for the local extended MuMain/OpenMU pair**. This is an
-isolated item-acquisition example, not final drop balance, original Season 6
-client fidelity, or public-production readiness.
+Status: **ACCEPTED for the local extended MuMain/OpenMU pair**. A first playable
+drop balance was deployed on 2026-10-22. It is not measured long-term economy,
+original Season 6 client fidelity, or public-production readiness.
 
 ## Scope and source
 
 The server adds one Baski-specific reward group for Wings of Unity (12/245),
-with a single guaranteed local prototype drop and a one-item cap. The group is
+with a single guaranteed local prototype drop and a one-item cap for the original
+2026-10-21 acquisition test. The group is
 not in the global monster drop pool. A separate optional Season 6 update
 depends on the installed Baski v4 and experimental wings v2 updates. Existing
 Baski reward groups and operator drop caps are preserved. Fresh configuration
@@ -68,11 +69,48 @@ Source worktrees and exact committed SHAs are in the package manifest at
   to the Lorencia safe zone. The secondary observer client was closed. One
   package Main, one server and one healthy database remain running.
 
+## Balance update and retained runtime (2026-10-22)
+
+Optional Baski reward update v2 keeps the same group and item identities but
+sets its default chance to 0.05 and Baski's respawn delay to five minutes. The
+normal Ferea map group probabilities sum to less than one with this reward, so
+an unmodified normal-player kill has a 5% wing chance. That is 20 kills in
+expectation, or about 100 minutes of respawn waiting plus combat. This is a
+local acquisition default, not a claim about an original-season drop rate.
+
+Fresh initialization uses the new defaults. An installed v1 group is upgraded
+only when its deterministic identity, 100% wing-only contents and one-drop cap
+still match the prototype. Changed operator rates, reward groups, caps and
+respawn intervals are preserved. Where a server owner deliberately retained
+the exact v1 values, those values are indistinguishable from untouched
+defaults and are migrated.
+
+The changed initialization assembly was built with .NET 10 in a capped SDK
+container. Focused Baski initialization and migration tests passed 10/10;
+`git diff --check` passed. Before deployment, PostgreSQL was backed up to
+`evidence/unity-wing/balance-v2/database-before.dump` (SHA-256
+`CC251B1D2E29A771537969311CD330A07D047AEC1568BD9A8F96AA5C99A5E692`),
+and the previous initialization DLL was retained alongside it. Readback
+confirms update v2, Baski 900 cap one, chance 0.05, respawn 00:05:00, exactly
+one 12/245 reward, and both previously owned wings in their original slots.
+
+The first restart exposed pre-existing drift in two Ferea encounter spawn
+positions: Orb `(24,124)` and Lord `(27,124)` conflicted with the unchanged
+terrain. The pre-v2 backup and current database had identical terrain and
+spawn hashes, so the balance update did not cause this drift. A guarded,
+two-row transaction restored the previously verified `(30,120)` points; its
+SQL and readback are in `evidence/unity-wing/balance-v2/`. The next restart had
+zero Ferea encounter or other server errors after 36 seconds of observation.
+The game/admin endpoints responded, the database was healthy, and exactly one
+canonical MuMain process was started. The probabilistic drop itself was not
+sampled through repeated live kills; the prior normal-player acquisition test
+covered the reward path before its probability changed.
+
 ## Limits and next work
 
-The 100% Baski wing drop exists solely to make this technical acceptance
-reproducible. Set a deliberate economy rule before using it for regular
-gameplay. There is no custom particle/shadow recipe for 245; its model uses the
+The 100% Baski wing drop described above was the historical acquisition
+fixture; v2 uses a 5% default. Tune it from observed play before claiming a
+finished long-term economy. There is no custom particle/shadow recipe for 245; its model uses the
 generic wing attachment/animation path. The supplied private art remains local.
 Test clients had overlapping mounts/effects in screenshots, so detailed visual
 balance and animation polish remain a separate gate. This item slice does not

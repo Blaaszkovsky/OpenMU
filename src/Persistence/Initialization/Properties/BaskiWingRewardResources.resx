@@ -5,5 +5,5 @@
   <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
   <data name="Name" xml:space="preserve"><value>Add experimental Baski wing reward</value></data>
-  <data name="Description" xml:space="preserve"><value>Baski drops exactly one Wings of Unity (12/245) for paired MuMain testing. Preserves existing operator reward groups and their drop cap. This is experimental acquisition data, not final economy balance.</value></data>
+  <data name="Description" xml:space="preserve"><value>Baski can drop Wings of Unity (12/245) with a 5% chance and respawns after five minutes. Preserves operator reward groups and custom settings.</value></data>
 </root>

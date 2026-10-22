@@ -73,6 +73,55 @@ internal class BaskiWingRewardDataTest
         Assert.That(configuration.DropItemGroups.Count, Is.EqualTo(groupCount));
     }
 
+    /// <summary>Verifies an installed v1 prototype is migrated without changing its identity.</summary>
+    [Test]
+    public async Task VersionOnePrototypeIsBalancedAsync()
+    {
+        var (context, configuration) = await CreateConfigurationAsync().ConfigureAwait(false);
+        using var _ = context;
+        var baski = configuration.Monsters.Single(monster => monster.Number == 900);
+        var reward = baski.DropItemGroups.Single();
+        reward.Chance = 1;
+        baski.RespawnDelay = TimeSpan.FromSeconds(10);
+        var update = new AddBaskiWingRewardUpdatePlugIn();
+        var installed = (await context.GetAsync<ConfigurationUpdate>().ConfigureAwait(false)).Single(entry => entry.Key == update.Key);
+        installed.Version = 1;
+
+        await update.ApplyUpdateAsync(context, configuration).ConfigureAwait(false);
+
+        AssertReward(configuration);
+        Assert.Multiple(() =>
+        {
+            Assert.That(baski.DropItemGroups.Single(), Is.SameAs(reward));
+            Assert.That(installed.Version, Is.EqualTo(2));
+        });
+    }
+
+    /// <summary>Verifies a custom chance and respawn time survive the v1 to v2 update.</summary>
+    [Test]
+    public async Task VersionOneOperatorBalanceIsPreservedAsync()
+    {
+        var (context, configuration) = await CreateConfigurationAsync().ConfigureAwait(false);
+        using var _ = context;
+        var baski = configuration.Monsters.Single(monster => monster.Number == 900);
+        var reward = baski.DropItemGroups.Single();
+        reward.Chance = 0.25;
+        baski.RespawnDelay = TimeSpan.FromMinutes(2);
+        var update = new AddBaskiWingRewardUpdatePlugIn();
+        var installed = (await context.GetAsync<ConfigurationUpdate>().ConfigureAwait(false)).Single(entry => entry.Key == update.Key);
+        installed.Version = 1;
+
+        await update.ApplyUpdateAsync(context, configuration).ConfigureAwait(false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(reward.Chance, Is.EqualTo(0.25));
+            Assert.That(baski.RespawnDelay, Is.EqualTo(TimeSpan.FromMinutes(2)));
+            Assert.That(baski.DropItemGroups.Single(), Is.SameAs(reward));
+            Assert.That(installed.Version, Is.EqualTo(2));
+        });
+    }
+
     /// <summary>Verifies operator reward settings, including intentional disabling, survive reapplication.</summary>
     [TestCase(0, 0)]
     [TestCase(0.25, 3)]
@@ -113,11 +162,11 @@ internal class BaskiWingRewardDataTest
         Assert.Multiple(() =>
         {
             Assert.That(update.IsMandatory, Is.False);
-            Assert.That(update.Version, Is.EqualTo(1));
+            Assert.That(update.Version, Is.EqualTo(2));
             Assert.That(update.DependsOn.Single(dependency => dependency.Key == typeof(AddBaskiPrototypeUpdatePlugIn).GUID).MinVersion, Is.EqualTo(4));
             Assert.That(update.DependsOn.Single(dependency => dependency.Key == typeof(AddExperimentalFearlessWingUpdatePlugIn).GUID).MinVersion, Is.EqualTo(2));
             Assert.That(update.Name, Is.Not.Empty);
-            Assert.That(update.Description, Does.Contain("experimental"));
+            Assert.That(update.Description, Does.Contain("5%"));
         });
     }
 
@@ -129,7 +178,8 @@ internal class BaskiWingRewardDataTest
         Assert.Multiple(() =>
         {
             Assert.That(baski.NumberOfMaximumItemDrops, Is.EqualTo(1));
-            Assert.That(reward.Chance, Is.EqualTo(1));
+            Assert.That(baski.RespawnDelay, Is.EqualTo(TimeSpan.FromMinutes(5)));
+            Assert.That(reward.Chance, Is.EqualTo(0.05));
             Assert.That(reward.ItemLevel, Is.EqualTo(0));
             Assert.That(reward.ItemType, Is.EqualTo(SpecialItemType.None));
             Assert.That(reward.PossibleItems.Single(), Is.SameAs(wing));

@@ -61,7 +61,7 @@ internal sealed class BaskiPrototypeInitializer : InitializerBase
         baski.ViewRange = 10;
         baski.MoveDelay = TimeSpan.FromMilliseconds(400);
         baski.AttackDelay = TimeSpan.FromMilliseconds(1800);
-        baski.RespawnDelay = TimeSpan.FromSeconds(10);
+        baski.RespawnDelay = TimeSpan.FromMinutes(5);
         baski.NumberOfMaximumItemDrops = 0;
 
         // These are controlled test values, not asserted Season 16 combat data.
