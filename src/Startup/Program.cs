@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging;
 using MUnique.OpenMU.ChatServer;
 using MUnique.OpenMU.ConnectServer;
 using MUnique.OpenMU.DataModel.Configuration;
+using MUnique.OpenMU.Discord;
 using MUnique.OpenMU.FriendServer;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.TestActors;
@@ -344,6 +345,7 @@ internal sealed class Program : IDisposable
             .AddSingleton<ILoginServer, LoginServer>()
             .AddSingleton<IGuildServer, GuildServer>()
             .AddSingleton<IFriendServer, FriendServer>()
+            .AddDiscordIntegration(builder.Configuration.GetSection(DiscordSettings.SectionName), () => ServerTimeZone)
             .AddSingleton<ChatServer>()
             .AddSingleton<IChatServer>(s => s.GetService<ChatServer>()!)
             .AddSingleton<ConnectServerFactory>()
@@ -351,6 +353,7 @@ internal sealed class Program : IDisposable
             .AddSingleton<IConnectServerInstanceManager>(provider => provider.GetService<ConnectServerContainer>()!)
             .AddSingleton<GameServerContainer>()
             .AddSingleton<IGameServerInstanceManager>(provider => provider.GetService<GameServerContainer>()!)
+            .AddSingleton<IEventPublisher>(provider => provider.GetRequiredService<GameServerContainer>().EventPublisher)
             .AddScoped<IMapFactory, JavascriptMapFactory>()
             .AddCircuitConnectionState()
             .AddSingleton<SetupService>()
@@ -395,6 +398,9 @@ internal sealed class Program : IDisposable
         this.AddActorControlEndpoint(builder.Services);
 
         var host = builder.Build();
+
+        // The bot is listed with the other servers, e.g. in the admin panel.
+        this._servers.Add(host.Services.GetRequiredService<DiscordIntegration>());
 
         // NpgsqlLoggingConfiguration.InitializeLogging(host.Services.GetRequiredService<ILoggerFactory>())
         this._logger.Information("Host created");
