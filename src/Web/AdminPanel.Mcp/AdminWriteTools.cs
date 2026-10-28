@@ -82,7 +82,7 @@ public sealed class AdminWriteTools
     /// <param name="loginName">Exact account login name from players_list.</param>
     /// <returns>The safe operation result.</returns>
     [McpServerTool(Name = "players_disconnect", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Disconnect an online account without banning it.")]
+    [Description("Disconnect an online account or stop its offline-leveling session without banning it. Waits for the game server's result.")]
     [Authorize(Roles = "Operator")]
     [ExposesOperation(typeof(PlayerWriteOperations), nameof(PlayerWriteOperations.DisconnectAsync))]
     public static ValueTask<JsonObject> PlayersDisconnectAsync(
@@ -135,7 +135,7 @@ public sealed class AdminWriteTools
     /// <param name="reason">Mandatory audit reason, 1-1000 characters.</param>
     /// <returns>The safe operation result.</returns>
     [McpServerTool(Name = "accounts_set_state", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Change an offline account state with an audit reason. Privileged account states require Administrator.")]
+    [Description("Change an offline account state with an audit reason. Active offline-leveling sessions are refused; use players_disconnect first. Privileged account states require Administrator.")]
     [Authorize(Roles = "Operator")]
     [ExposesOperation(typeof(AccountWriteOperations), nameof(AccountWriteOperations.SetStateAsync))]
     public static ValueTask<JsonObject> AccountsSetStateAsync(
@@ -154,7 +154,7 @@ public sealed class AdminWriteTools
     /// <param name="reason">Mandatory audit reason.</param>
     /// <returns>The safe operation result.</returns>
     [McpServerTool(Name = "accounts_reset_password", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false, UseStructuredContent = true)]
-    [Description("Reset an offline account password. No credentials are returned or audited. Privileged accounts require Administrator.")]
+    [Description("Reset an offline account password. Active offline-leveling sessions are refused; use players_disconnect first. No credentials are returned or audited. Privileged accounts require Administrator.")]
     [Authorize(Roles = "Operator")]
     [ExposesOperation(typeof(AccountWriteOperations), nameof(AccountWriteOperations.ResetPasswordAsync))]
     public static ValueTask<JsonObject> AccountsResetPasswordAsync(

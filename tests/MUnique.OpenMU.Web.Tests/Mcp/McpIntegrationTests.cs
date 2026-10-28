@@ -124,6 +124,8 @@ public sealed class McpIntegrationTests : System.IDisposable
         builder.Services.AddSingleton<IPersistenceContextProvider>(persistence);
         var login = new Mock<ILoginServer>();
         login.Setup(l => l.GetSnapshotAsync()).ReturnsAsync(new Dictionary<string, byte> { ["tester"] = 4 });
+        login.Setup(l => l.TryReserveAccountAsync(It.IsAny<string>(), It.IsAny<int>())).Returns(async (string name, int _) =>
+            !(await login.Object.GetSnapshotAsync().ConfigureAwait(false)).Keys.Contains(name, StringComparer.OrdinalIgnoreCase));
         builder.Services.AddSingleton(login.Object);
         builder.Services.AddSingleton(Mock.Of<IGuildServer>());
         var servers = new Mock<IServerProvider>();

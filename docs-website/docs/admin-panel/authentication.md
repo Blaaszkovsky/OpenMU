@@ -254,12 +254,14 @@ Change a password with `PUT /api/accounts/{account}/password` and a JSON body
 Change state with `PUT /api/accounts/{account}/state` and
 `{ "state": "Banned", "reason": "Confirmed abuse" }`.
 Both require an offline account and use the shared operations layer's validation
-and durable audit. Privileged accounts and states require Administrator.
+and durable audit. An active offline-leveling session also prevents these changes;
+stop it with the disconnect route first. Privileged accounts and states require Administrator.
 Passwords are never returned or recorded in the audit history.
 
 Use `POST /api/players/{account}/disconnect` without a body to disconnect a
-live session through its owning game server. Its response includes `disconnected`;
-poll the account snapshot before attempting an offline change. These routes use
+live or offline-leveling session through its game server. Its response includes
+the confirmed `disconnected` result. A normal account snapshot with `online:false`
+alone does not prove that an offline-leveling session has stopped. These routes use
 the operational error statuses described in [MCP](mcp.md#phase-two-upgrade-notes).
 
 ### Granting cash shop coins

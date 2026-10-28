@@ -257,10 +257,14 @@ for `server_start` and `server_stop`. Remote listener commands may complete
 asynchronously; poll the overview for the resulting state. A broadcast is capped
 by `MaxBulkSize` (default 100 targets).
 
-`players_disconnect` takes an account login name. `players_ban` takes a live
+`players_disconnect` takes an account login name and also stops an active
+offline-leveling session, even though that session is absent from the normal
+login snapshot. It waits for the game server's result. If the disconnect cannot
+be confirmed, inspect session state before retrying; its audit entry remains pending.
+`players_ban` takes a live
 character name and a reason, and routes to its owning game server. Use
 `accounts_set_state` for offline accounts. State changes and password resets
-refuse online accounts. Changes involving spectator or game master accounts
+refuse online accounts and active offline-leveling sessions. Changes involving spectator or game master accounts
 require Administrator, including password resets. New accounts use the same
 validation as the public registration API and always start in the normal state.
 Passwords are never returned or included in audit records.
@@ -415,9 +419,15 @@ options or equip the item. Open an uninitialized bag/vault in game first.
 
 Both preview and apply reserve the offline account at the login server and
 release it afterward. Real logins are refused during the reservation; online
-accounts are refused without changing anything. In distributed deployments,
+accounts and active offline-leveling sessions are refused without changing
+anything. Each call checks the game servers after acquiring the reservation,
+including when an offline session starts between preview and apply. Stop that
+session with `players_disconnect` before editing the character or account.
+Account state and password changes use the same reservation and session check.
+If a running game server cannot confirm its session state, editing fails closed.
+In distributed deployments,
 new accounts need one login/logout to initialize their persisted login state
-before offline editing. Reservation failures and unavailable login coordination
+before offline character, account state or password changes. Reservation failures and unavailable login coordination
 fail closed. Reservations expire after five minutes, including after an admin
 host crash, and character calls have a one-minute cancellation budget.
 The distributed `login-state` store must support Dapr's `ttlInSeconds` metadata

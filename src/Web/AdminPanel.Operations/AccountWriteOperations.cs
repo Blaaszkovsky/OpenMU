@@ -19,7 +19,8 @@ using MUnique.OpenMU.Web.AdminPanel.API;
 /// <param name="configurations">The shared configuration source.</param>
 /// <param name="login">The login server.</param>
 /// <param name="executor">The authorization and audit service.</param>
-public sealed class AccountWriteOperations(IPersistenceContextProvider persistence, IDataSource<GameConfiguration> configurations, ILoginServer login, AdminOperationExecutor executor)
+/// <param name="servers">The game server registry.</param>
+public sealed class AccountWriteOperations(IPersistenceContextProvider persistence, IDataSource<GameConfiguration> configurations, ILoginServer login, AdminOperationExecutor executor, IServerProvider servers)
 {
     /// <summary>Creates a normal account using the public registration API's validation.</summary>
     /// <param name="loginName">The new login name.</param>
@@ -94,18 +95,23 @@ public sealed class AccountWriteOperations(IPersistenceContextProvider persisten
                     throw new AdminOperationException("Unknown account state.", AdminOperationErrorKind.InvalidInput);
                 }
 
-                using var context = persistence.CreateNewPlayerContext(await configurations.GetOwnerAsync(cancellationToken: cancellationToken).ConfigureAwait(false));
-                var account = await context.GetAccountByLoginNameAsync(loginName, cancellationToken).ConfigureAwait(false)
-                    ?? throw new AdminOperationException("Account not found.", AdminOperationErrorKind.InvalidInput);
-                await this.RequireOfflineAsync(account.LoginName).ConfigureAwait(false);
-                if (IsPrivileged(account.State) || IsPrivileged(state))
-                {
-                    await executor.RequireAsync(AdminRoles.Administrator, cancellationToken).ConfigureAwait(false);
-                }
+                await this.RequireAccountAsync(loginName, cancellationToken).ConfigureAwait(false);
+                return await OfflineAccountAccess.ExecuteAsync(login, servers, loginName, ChangeReservedAsync, cancellationToken).ConfigureAwait(false);
 
-                account.State = state;
-                await SaveAsync(context, cancellationToken).ConfigureAwait(false);
-                return AdminReadResult.From(new { loginName = account.LoginName, state = state.ToString() });
+                async ValueTask<JsonObject> ChangeReservedAsync(CancellationToken editCancellationToken)
+                {
+                    using var context = persistence.CreateNewPlayerContext(await configurations.GetOwnerAsync(cancellationToken: editCancellationToken).ConfigureAwait(false));
+                    var account = await context.GetAccountByLoginNameAsync(loginName, editCancellationToken).ConfigureAwait(false)
+                        ?? throw new AdminOperationException("Account not found.", AdminOperationErrorKind.InvalidInput);
+                    if (IsPrivileged(account.State) || IsPrivileged(state))
+                    {
+                        await executor.RequireAsync(AdminRoles.Administrator, editCancellationToken).ConfigureAwait(false);
+                    }
+
+                    account.State = state;
+                    await SaveAsync(context, editCancellationToken).ConfigureAwait(false);
+                    return AdminReadResult.From(new { loginName = account.LoginName, state = state.ToString() });
+                }
             },
             cancellationToken);
 
@@ -129,18 +135,23 @@ public sealed class AccountWriteOperations(IPersistenceContextProvider persisten
                     throw new AdminOperationException($"The {nameof(password)} must contain 3-20 printable ASCII characters.", AdminOperationErrorKind.InvalidInput);
                 }
 
-                using var context = persistence.CreateNewPlayerContext(await configurations.GetOwnerAsync(cancellationToken: cancellationToken).ConfigureAwait(false));
-                var account = await context.GetAccountByLoginNameAsync(loginName, cancellationToken).ConfigureAwait(false)
-                    ?? throw new AdminOperationException("Account not found.", AdminOperationErrorKind.InvalidInput);
-                await this.RequireOfflineAsync(account.LoginName).ConfigureAwait(false);
-                if (IsPrivileged(account.State))
-                {
-                    await executor.RequireAsync(AdminRoles.Administrator, cancellationToken).ConfigureAwait(false);
-                }
+                await this.RequireAccountAsync(loginName, cancellationToken).ConfigureAwait(false);
+                return await OfflineAccountAccess.ExecuteAsync(login, servers, loginName, ChangeReservedAsync, cancellationToken).ConfigureAwait(false);
 
-                account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
-                await SaveAsync(context, cancellationToken).ConfigureAwait(false);
-                return AdminReadResult.From(new { loginName = account.LoginName, status = "password_reset" });
+                async ValueTask<JsonObject> ChangeReservedAsync(CancellationToken editCancellationToken)
+                {
+                    using var context = persistence.CreateNewPlayerContext(await configurations.GetOwnerAsync(cancellationToken: editCancellationToken).ConfigureAwait(false));
+                    var account = await context.GetAccountByLoginNameAsync(loginName, editCancellationToken).ConfigureAwait(false)
+                        ?? throw new AdminOperationException("Account not found.", AdminOperationErrorKind.InvalidInput);
+                    if (IsPrivileged(account.State))
+                    {
+                        await executor.RequireAsync(AdminRoles.Administrator, editCancellationToken).ConfigureAwait(false);
+                    }
+
+                    account.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
+                    await SaveAsync(context, editCancellationToken).ConfigureAwait(false);
+                    return AdminReadResult.From(new { loginName = account.LoginName, status = "password_reset" });
+                }
             },
             cancellationToken);
 
@@ -164,11 +175,10 @@ public sealed class AccountWriteOperations(IPersistenceContextProvider persisten
         }
     }
 
-    private async ValueTask RequireOfflineAsync(string loginName)
+    private async ValueTask RequireAccountAsync(string loginName, CancellationToken cancellationToken)
     {
-        if ((await login.GetSnapshotAsync().ConfigureAwait(false)).Keys.Contains(loginName, StringComparer.OrdinalIgnoreCase))
-        {
-            throw new AdminOperationException("The account is online. Use players_disconnect first, or players_ban to ban a live character.");
-        }
+        using var context = persistence.CreateNewPlayerContext(await configurations.GetOwnerAsync(cancellationToken: cancellationToken).ConfigureAwait(false));
+        _ = await context.GetAccountByLoginNameAsync(loginName, cancellationToken).ConfigureAwait(false)
+            ?? throw new AdminOperationException("Account not found.", AdminOperationErrorKind.InvalidInput);
     }
 }

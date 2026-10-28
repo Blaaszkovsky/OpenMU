@@ -13,6 +13,7 @@ using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Administration;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameLogic.MiniGames;
+using MUnique.OpenMU.GameLogic.Offline;
 using MUnique.OpenMU.GameLogic.PlugIns.PeriodicTasks;
 using MUnique.OpenMU.Interfaces;
 using MUnique.OpenMU.Persistence;
@@ -49,6 +50,45 @@ public sealed class GameServerAdministrationTests
     {
         await this._player.DisposeAsync().ConfigureAwait(false);
         await ((GameContext)this._player.GameContext).DisposeAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>A stopping offline player still owns its data after its manager entry has gone.</summary>
+    [Test]
+    public async Task DetectsOfflinePlayerUntilRemovedFromContextAsync()
+    {
+        var context = this._player.GameContext;
+        var administration = new GameServerAdministration(context);
+        Assert.That(await administration.HasOfflineSessionAsync("tester", CancellationToken.None).ConfigureAwait(false), Is.False);
+        await using var offline = new OfflinePlayer(context) { Account = this._player.Account };
+        await context.AddPlayerAsync(offline).ConfigureAwait(false);
+        Assert.That(context.OfflinePlayerManager.IsActive("tester"), Is.False);
+        Assert.That(await administration.HasOfflineSessionAsync("TESTER", CancellationToken.None).ConfigureAwait(false), Is.True);
+        Assert.That(await administration.HasOfflineSessionAsync("another", CancellationToken.None).ConfigureAwait(false), Is.False);
+        await context.RemovePlayerAsync(offline).ConfigureAwait(false);
+        Assert.That(await administration.HasOfflineSessionAsync("tester", CancellationToken.None).ConfigureAwait(false), Is.False);
+    }
+
+    /// <summary>The initialization sentinel is visible before the replacement player has entered the context.</summary>
+    [Test]
+    public async Task DetectsOfflineInitializationDuringDisconnectAsync()
+    {
+        var context = this._player.GameContext;
+        var administration = new GameServerAdministration(context);
+        this._player.TryAddMoney(1000000);
+        var observed = false;
+        this._player.PlayerDisconnected += async _ =>
+        {
+            observed = await administration.HasOfflineSessionAsync("TESTER", CancellationToken.None).ConfigureAwait(false);
+        };
+        _ = await context.OfflinePlayerManager.StartAsync(this._player, "tester").ConfigureAwait(false);
+        try
+        {
+            Assert.That(observed, Is.True);
+        }
+        finally
+        {
+            await context.OfflinePlayerManager.StopAsync("tester").ConfigureAwait(false);
+        }
     }
 
     /// <summary>The channel updates the live attribute collection for regular and master levels.</summary>

@@ -83,12 +83,8 @@ public sealed partial class GameServerClient : ManageableServerClient, IGameServ
     }
 
     /// <inheritdoc />
-    /// <returns><c>true</c>, when the request got published. The result of the game server which hosts the account is unknown.</returns>
-    public async ValueTask<bool> DisconnectAccountAsync(string accountName)
-    {
-        await this.PublishCommandAsync(nameof(this.DisconnectAccountAsync), accountName).ConfigureAwait(false);
-        return true;
-    }
+    public ValueTask<bool> DisconnectAccountAsync(string accountName)
+        => this.InvokeAdministrationAsync<bool>(nameof(this.DisconnectAccountAsync), new() { LoginName = accountName }, CancellationToken.None);
 
     /// <inheritdoc />
     /// <returns><c>true</c>, when the request got published. The result of the game server which hosts the player is unknown.</returns>

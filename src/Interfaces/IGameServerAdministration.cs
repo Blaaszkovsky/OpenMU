@@ -10,6 +10,12 @@ using System.Threading;
 /// <remarks>Internal server channel. Public front ends must authorize and audit writes before calling it.</remarks>
 public interface IGameServerAdministration : IGameServerPluginOperations
 {
+    /// <summary>Checks whether an offline session still owns the account's live persistence context.</summary>
+    /// <param name="loginName">The account login name.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>Whether the session is initializing, active or still stopping.</returns>
+    ValueTask<bool> HasOfflineSessionAsync(string loginName, CancellationToken cancellationToken);
+
     /// <summary>Reads one best-effort scalar snapshot without waiting for player persistence.</summary>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The connected characters, bounded by the server's player population.</returns>

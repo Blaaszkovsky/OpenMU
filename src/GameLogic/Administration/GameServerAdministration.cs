@@ -16,6 +16,17 @@ using MUnique.OpenMU.Persistence;
 public sealed partial class GameServerAdministration(IGameContext context) : IGameServerAdministration
 {
     /// <inheritdoc />
+    public async ValueTask<bool> HasOfflineSessionAsync(string loginName, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // Also cover offline players created outside the manager (for example template bots).
+        return context.OfflinePlayerManager.IsActive(loginName)
+            || (await context.GetPlayersAsync().ConfigureAwait(false)).OfType<OfflinePlayer>()
+                .Any(player => string.Equals(player.AccountLoginName, loginName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <inheritdoc />
     public async ValueTask<LivePlayerPage> GetPlayersAsync(ushort? mapNumber, uint? guildId, int offset, int limit, CancellationToken cancellationToken)
     {
         if (offset < 0 || limit is < 1 or > 100)

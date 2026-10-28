@@ -39,7 +39,7 @@ public class AccountControllerTests
         gameConfigurationSource
             .Setup(s => s.GetOwnerAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new GameConfiguration());
-        this._controller = new AccountController(new AccountWriteOperations(this._persistenceContextProvider, gameConfigurationSource.Object, Mock.Of<ILoginServer>(), AdminOperationTestServices.CreateExecutor("api")))
+        this._controller = new AccountController(new AccountWriteOperations(this._persistenceContextProvider, gameConfigurationSource.Object, Mock.Of<ILoginServer>(), AdminOperationTestServices.CreateExecutor("api"), Mock.Of<IServerProvider>()))
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };

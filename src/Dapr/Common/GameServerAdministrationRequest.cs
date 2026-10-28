@@ -16,6 +16,9 @@ public sealed class GameServerAdministrationRequest
     /// <summary>Gets or sets the expected server identifier.</summary>
     public int ServerId { get; set; }
 
+    /// <summary>Gets or sets the exact account login name.</summary>
+    public string LoginName { get; set; } = string.Empty;
+
     /// <summary>Gets or sets the exact character name.</summary>
     public string CharacterName { get; set; } = string.Empty;
 

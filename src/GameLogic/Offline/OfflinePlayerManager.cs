@@ -7,20 +7,21 @@ namespace MUnique.OpenMU.GameLogic.Offline;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameLogic.MuHelper;
 using MUnique.OpenMU.GameLogic.Views.Login;
+using Nito.AsyncEx;
 
 /// <summary>
 /// Manages active <see cref="OfflinePlayer"/> sessions.
 /// </summary>
 public sealed class OfflinePlayerManager
 {
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, OfflinePlayer> _activePlayers =
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (OfflinePlayer Player, AsyncLock Lock)> _activePlayers =
         new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Gets a snapshot of all currently active offline players.
     /// </summary>
     public IReadOnlyCollection<OfflinePlayer> OfflinePlayers
-        => this._activePlayers.Values.ToList();
+        => this._activePlayers.Values.Select(session => session.Player).ToList();
 
     /// <summary>
     /// Starts an offline player session by replacing the real player with a copy.
@@ -38,9 +39,13 @@ public sealed class OfflinePlayerManager
         }
 
         var sentinel = new OfflinePlayer(realPlayer.GameContext);
+        var session = (Player: sentinel, Lock: new AsyncLock());
+
+        // Acquire before publishing; always take this lock before a player's persistence lock.
+        using var l = await session.Lock.LockAsync().ConfigureAwait(false);
 
         // Atomically claim the slot to prevent racing during initialization.
-        if (!this._activePlayers.TryAdd(loginName, sentinel))
+        if (!this._activePlayers.TryAdd(loginName, session))
         {
             await sentinel.DisposeAsync().ConfigureAwait(false);
             return false;
@@ -77,12 +82,19 @@ public sealed class OfflinePlayerManager
     /// <param name="loginName">The account login name.</param>
     public async ValueTask StopAsync(string loginName)
     {
-        if (!this._activePlayers.TryRemove(loginName, out var offlinePlayer))
+        if (!this._activePlayers.TryGetValue(loginName, out var session))
         {
             // The session might have been started and stopped outside the manager (e.g. in tests).
             return;
         }
 
+        using var l = await session.Lock.LockAsync().ConfigureAwait(false);
+        if (!this._activePlayers.TryGetValue(loginName, out var current) || current.Player != session.Player)
+        {
+            return;
+        }
+
+        var offlinePlayer = session.Player;
         try
         {
             await offlinePlayer.StopAsync().ConfigureAwait(false);
@@ -90,11 +102,13 @@ public sealed class OfflinePlayerManager
         catch (Exception ex)
         {
             offlinePlayer.Logger.LogError(ex, "Error stopping offline player session for {0}.", loginName);
+            throw;
         }
         finally
         {
             await offlinePlayer.GameContext.RemovePlayerAsync(offlinePlayer).ConfigureAwait(false);
             await offlinePlayer.DisposeAsync().ConfigureAwait(false);
+            this._activePlayers.TryRemove(loginName, out _);
         }
     }
 
@@ -111,7 +125,11 @@ public sealed class OfflinePlayerManager
     /// <param name="player">The offline player, if found.</param>
     /// <returns><c>true</c> if an active session exists; otherwise <c>false</c>.</returns>
     public bool TryGetPlayer(string loginName, out OfflinePlayer? player)
-        => this._activePlayers.TryGetValue(loginName, out player);
+    {
+        var found = this._activePlayers.TryGetValue(loginName, out var session);
+        player = found ? session.Player : null;
+        return found;
+    }
 
     private async ValueTask TransitionToOfflineAsync(Player realPlayer)
     {
@@ -196,7 +214,7 @@ public sealed class OfflinePlayerManager
     /// <param name="sentinel">The ghost player to dispose.</param>
     private async ValueTask RemoveAndDisposeAsync(string loginName, OfflinePlayer sentinel)
     {
-        this._activePlayers.TryRemove(loginName, out _);
         await sentinel.DisposeAsync().ConfigureAwait(false);
+        this._activePlayers.TryRemove(loginName, out _);
     }
 }

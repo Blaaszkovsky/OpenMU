@@ -15,6 +15,10 @@ public sealed partial class GameServer : IGameServerAdministration
     private GameServerAdministration Administration => new(this._gameContext);
 
     /// <inheritdoc />
+    public ValueTask<bool> HasOfflineSessionAsync(string loginName, CancellationToken cancellationToken)
+        => this.Administration.HasOfflineSessionAsync(loginName, cancellationToken);
+
+    /// <inheritdoc />
     public ValueTask<IReadOnlyList<LivePlayerInfo>> GetPlayerSnapshotAsync(CancellationToken cancellationToken)
         => this.Administration.GetPlayerSnapshotAsync(cancellationToken);
 

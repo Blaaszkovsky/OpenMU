@@ -18,6 +18,24 @@ using MUnique.OpenMU.Interfaces;
 [ServiceFilter(typeof(DaprAppTokenAuthorizationFilter))]
 public sealed class GameServerAdministrationController(IGameServer server, AdministrationDeliveries deliveries) : ControllerBase
 {
+    /// <summary>Checks whether an offline session owns this account on the addressed server.</summary>
+    /// <param name="request">The addressed server and account.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>Whether an offline session owns the account.</returns>
+    [HttpPost(nameof(IGameServerAdministration.HasOfflineSessionAsync))]
+    public ValueTask<bool> HasOfflineSessionAsync(GameServerAdministrationRequest request, CancellationToken cancellationToken)
+        => this.Resolve(request).HasOfflineSessionAsync(request.LoginName, cancellationToken);
+
+    /// <summary>Waits for an account's online or offline session to stop.</summary>
+    /// <param name="request">The addressed server and account.</param>
+    /// <returns>The actual server's disconnect result.</returns>
+    [HttpPost(nameof(IGameServer.DisconnectAccountAsync))]
+    public ValueTask<bool> DisconnectAccountAsync(GameServerAdministrationRequest request)
+    {
+        _ = this.Resolve(request);
+        return server.DisconnectAccountAsync(request.LoginName);
+    }
+
     /// <summary>Reads one scalar snapshot for a complete player-list query.</summary>
     /// <param name="request">The addressed server.</param>
     /// <param name="cancellationToken">The cancellation token.</param>

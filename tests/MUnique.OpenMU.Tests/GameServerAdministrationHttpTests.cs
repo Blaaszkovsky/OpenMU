@@ -34,6 +34,8 @@ public sealed class GameServerAdministrationHttpTests
     [TestCase("SetLevelAsync")]
     [TestCase("StartEventAsync")]
     [TestCase("ExecuteAdminOperationAsync")]
+    [TestCase("HasOfflineSessionAsync")]
+    [TestCase("DisconnectAccountAsync")]
     public async Task RejectsUnauthenticatedActionsAsync(string operation)
     {
         var server = new Mock<IGameServer>();
@@ -81,6 +83,27 @@ public sealed class GameServerAdministrationHttpTests
         live.Verify(s => s.SetLevelAsync("Hero", It.IsAny<Guid>(), 100, false, It.IsAny<CancellationToken>()), accepted ? Times.Once() : Times.Never());
     }
 
+    /// <summary>Account presence and disconnect routes return the addressed server's actual boolean response.</summary>
+    /// <param name="operation">The account operation.</param>
+    /// <param name="expected">The actual server response.</param>
+    [TestCase("HasOfflineSessionAsync", true)]
+    [TestCase("HasOfflineSessionAsync", false)]
+    [TestCase("DisconnectAccountAsync", true)]
+    [TestCase("DisconnectAccountAsync", false)]
+    public async Task AccountRoutesReturnConfirmedResultsAsync(string operation, bool expected)
+    {
+        var server = new Mock<IGameServer>();
+        server.SetupGet(s => s.Id).Returns(4);
+        server.Setup(s => s.DisconnectAccountAsync("tester")).ReturnsAsync(expected);
+        server.As<IGameServerAdministration>().Setup(s => s.HasOfflineSessionAsync("tester", It.IsAny<CancellationToken>())).ReturnsAsync(expected);
+        await using var app = await CreateHostAsync(server.Object, TestToken).ConfigureAwait(false);
+        using var http = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        http.DefaultRequestHeaders.Add("dapr-api-token", TestToken);
+        using var response = await http.PostAsJsonAsync($"/administration/{operation}", new GameServerAdministrationRequest { ServerId = 4, LoginName = "tester" }).ConfigureAwait(false);
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(await response.Content.ReadFromJsonAsync<bool>().ConfigureAwait(false), Is.EqualTo(expected));
+    }
+
     /// <summary>Runs the real Dapr process and verifies authenticated service invocation to the live controller.</summary>
     [Test]
     [Explicit("Set OPENMU_TEST_DAPRD_PATH to a local daprd executable and select this test explicitly.")]
@@ -94,6 +117,8 @@ public sealed class GameServerAdministrationHttpTests
         var hero = new LivePlayerInfo(Guid.NewGuid(), "tester", "Hero", 0, 1, 2, 10, 0, null, false);
         live.Setup(s => s.GetPlayerSnapshotAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { hero });
         live.Setup(s => s.GiveItemAsync("Hero", hero.CharacterId, It.IsAny<ItemSpecification>(), It.IsAny<CancellationToken>())).ReturnsAsync(GameServerAdminResult.Success);
+        live.Setup(s => s.HasOfflineSessionAsync("tester", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        server.Setup(s => s.DisconnectAccountAsync("tester")).ReturnsAsync(false);
         await using var app = await CreateHostAsync(server.Object, TestToken).ConfigureAwait(false);
         var ports = new HashSet<int>();
         while (ports.Count < 3)
@@ -150,6 +175,10 @@ public sealed class GameServerAdministrationHttpTests
             var client = new GameServerClient(dapr, new ServerStateData { Id = 4, Type = ServerType.GameServer });
             var snapshot = await client.GetPlayerSnapshotAsync(timeout.Token).ConfigureAwait(false);
             Assert.That(snapshot.Single().Character, Is.EqualTo("Hero"));
+            Assert.That(await client.HasOfflineSessionAsync("tester", timeout.Token).ConfigureAwait(false), Is.True);
+            Assert.That(await client.DisconnectAccountAsync("tester").ConfigureAwait(false), Is.False);
+            server.Setup(s => s.DisconnectAccountAsync("tester")).ReturnsAsync(true);
+            Assert.That(await client.DisconnectAccountAsync("tester").ConfigureAwait(false), Is.True);
             Assert.That((await client.GiveItemAsync("Hero", hero.CharacterId, new(0, 1), timeout.Token).ConfigureAwait(false)).Succeeded, Is.True);
             live.Verify(s => s.GiveItemAsync("Hero", hero.CharacterId, It.Is<ItemSpecification>(i => i.Group == 0 && i.Number == 1), It.IsAny<CancellationToken>()), Times.Once);
         }

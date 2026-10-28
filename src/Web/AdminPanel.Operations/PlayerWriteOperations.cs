@@ -19,7 +19,7 @@ using MUnique.OpenMU.Persistence.AdminAuth;
 /// <param name="executor">The authorization and audit service.</param>
 public sealed class PlayerWriteOperations(IServerProvider servers, ILoginServer login, IPersistenceContextProvider persistence, IDataSource<GameConfiguration> configurations, AdminOperationExecutor executor)
 {
-    /// <summary>Disconnects an online account without changing its persisted state.</summary>
+    /// <summary>Disconnects an online account or stops its offline-leveling session.</summary>
     /// <param name="loginName">The exact account login name.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>Whether a live account was disconnected.</returns>
@@ -32,7 +32,26 @@ public sealed class PlayerWriteOperations(IServerProvider servers, ILoginServer 
             async _ =>
             {
                 var server = await this.ResolveAsync(loginName).ConfigureAwait(false);
-                var disconnected = server is not null && await server.DisconnectAccountAsync(loginName).ConfigureAwait(false);
+                var disconnected = false;
+                if (server is not null)
+                {
+                    disconnected = await DisconnectConfirmedAsync(server, loginName).ConfigureAwait(false);
+                }
+                else
+                {
+                    // Offline leveling releases the normal login registration, so ask every game server.
+                    foreach (var candidate in servers.Servers.OfType<IGameServer>().Where(s => s.ServerState != ServerState.Stopped))
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        if (candidate.ServerState != ServerState.Started)
+                        {
+                            throw new AdminOperationException("A game server is unavailable; the account's disconnect could not be confirmed.", AdminOperationErrorKind.Uncertain);
+                        }
+
+                        disconnected |= await DisconnectConfirmedAsync(candidate, loginName).ConfigureAwait(false);
+                    }
+                }
+
                 return AdminReadResult.From(new { loginName, disconnected });
             },
             cancellationToken);
@@ -69,6 +88,18 @@ public sealed class PlayerWriteOperations(IServerProvider servers, ILoginServer 
                 return AdminReadResult.From(new { characterName, banned = true });
             },
             cancellationToken);
+
+    private static async ValueTask<bool> DisconnectConfirmedAsync(IGameServer server, string loginName)
+    {
+        try
+        {
+            return await server.DisconnectAccountAsync(loginName).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            throw new AdminOperationException("The account disconnect could not be confirmed. Check its session state before retrying.", AdminOperationErrorKind.Uncertain, exception);
+        }
+    }
 
     private async ValueTask<IGameServer?> ResolveAsync(string loginName)
     {

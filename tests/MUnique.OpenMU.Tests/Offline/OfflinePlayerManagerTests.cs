@@ -4,11 +4,15 @@
 
 namespace MUnique.OpenMU.Tests.Offline;
 
+using Moq;
 using MUnique.OpenMU.AttributeSystem;
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.GameLogic;
+using MUnique.OpenMU.GameLogic.Administration;
 using MUnique.OpenMU.GameLogic.Attributes;
+using MUnique.OpenMU.GameLogic.MuHelper;
 using MUnique.OpenMU.GameLogic.Offline;
+using MUnique.OpenMU.GameLogic.Views.Login;
 using MUnique.OpenMU.Persistence;
 
 /// <summary>
@@ -94,6 +98,105 @@ public class OfflinePlayerManagerTests
 
         // Assert
         Assert.That(manager.IsActive(TestUserLoginName), Is.False);
+    }
+
+    /// <summary>Concurrent stops keep ownership visible until initialization and final teardown complete.</summary>
+    /// <param name="initializing">Whether to pause before the real player's final save or during ghost teardown.</param>
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task StopWaitsForInitializationAndTeardownAsync(bool initializing)
+    {
+        var manager = this._gameContext.OfflinePlayerManager;
+        var administration = new GameServerAdministration(this._gameContext);
+        await using var realPlayer = await this.CreatePlayerWithPersistedAccountAsync().ConfigureAwait(false);
+        realPlayer.TryAddMoney(1_000_000);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (initializing)
+        {
+            Mock.Get(realPlayer.ViewPlugIns.GetPlugIn<ILogoutPlugIn>()!).Setup(p => p.LogoutAsync(LogoutType.CloseGame)).Returns(async () =>
+            {
+                entered.SetResult();
+                await release.Task.ConfigureAwait(false);
+            });
+        }
+
+        var starting = manager.StartAsync(realPlayer, TestUserLoginName).AsTask();
+        if (!initializing)
+        {
+            Assert.That(await starting.ConfigureAwait(false), Is.True);
+            Assert.That(manager.TryGetPlayer(TestUserLoginName, out var offline), Is.True);
+            offline!.PlayerDisconnected += async _ =>
+            {
+                entered.SetResult();
+                await release.Task.ConfigureAwait(false);
+            };
+        }
+
+        var stopping = manager.StopAsync(TestUserLoginName).AsTask();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        var concurrentStop = manager.StopAsync(TestUserLoginName).AsTask();
+        try
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(stopping.IsCompleted, Is.False);
+                Assert.That(concurrentStop.IsCompleted, Is.False);
+                Assert.That(manager.IsActive(TestUserLoginName), Is.True);
+            });
+            Assert.That(await administration.HasOfflineSessionAsync(TestUserLoginName, default).ConfigureAwait(false), Is.True);
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Task.WhenAll(starting, stopping, concurrentStop).WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        }
+
+        Assert.That(await administration.HasOfflineSessionAsync(TestUserLoginName, default).ConfigureAwait(false), Is.False);
+    }
+
+    /// <summary>An automatic stop from the AI loop completes without waiting on its own loop task.</summary>
+    [Test]
+    public async Task InsufficientZenStopsWithoutBlockingExternalStopAsync()
+    {
+        var manager = this._gameContext.OfflinePlayerManager;
+        var configuration = this._gameContext.FeaturePlugIns.GetPlugIn<MuHelperFeaturePlugIn>()!.Configuration ??= new MuHelperConfiguration();
+        await using var realPlayer = await this.CreatePlayerWithPersistedAccountAsync().ConfigureAwait(false);
+        realPlayer.TryAddMoney(1_000_000);
+        using (var context = this._contextProvider.CreateNewPlayerContext(this._gameContext.Configuration))
+        {
+            var account = await context.GetAccountByLoginNameAsync(TestUserLoginName).ConfigureAwait(false);
+            var character = account!.Characters.Single();
+            var level = context.CreateNew<StatAttributeDefinition>();
+            level.Attribute = Stats.Level;
+            level.BaseValue = 100;
+            character.CharacterClass!.StatAttributes.Add(level);
+            await context.SaveChangesAsync().ConfigureAwait(false);
+        }
+
+        Assert.That(await manager.StartAsync(realPlayer, TestUserLoginName).ConfigureAwait(false), Is.True);
+        Assert.That(manager.TryGetPlayer(TestUserLoginName, out var offline), Is.True);
+        var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        offline!.PlayerDisconnected += _ =>
+        {
+            disconnected.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
+        await offline.RunPersistenceExclusiveAsync(() =>
+        {
+            offline.Attributes![Stats.Level] = 100;
+            offline.Money = 0;
+            configuration.PayInterval = TimeSpan.Zero;
+            return ValueTask.CompletedTask;
+        }).ConfigureAwait(false);
+        Assert.That(offline.PlayerState.CurrentState, Is.SameAs(PlayerState.EnteredWorld));
+        Assert.That(MuHelperZenCostCalculator.Calculate(offline, configuration, offline.StartTimestamp), Is.GreaterThan(0));
+        Assert.That(offline.Account!.IsBot, Is.False);
+        await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        await manager.StopAsync(TestUserLoginName).AsTask().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        Assert.That(manager.IsActive(TestUserLoginName), Is.False);
+        Assert.That((await this._gameContext.GetPlayersAsync().ConfigureAwait(false)).OfType<OfflinePlayer>(), Is.Empty);
+        Assert.That(offline.IsDisposed, Is.True);
     }
 
     /// <summary>

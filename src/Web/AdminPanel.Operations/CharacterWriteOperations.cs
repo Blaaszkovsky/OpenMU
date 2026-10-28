@@ -4,8 +4,6 @@
 
 namespace MUnique.OpenMU.Web.AdminPanel.Operations;
 
-using System.Runtime.ExceptionServices;
-using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -26,7 +24,8 @@ using MUnique.OpenMU.Persistence.AdminAuth;
 /// <param name="executor">The audit executor.</param>
 /// <param name="confirmations">The preview coordinator.</param>
 /// <param name="settings">The write policy.</param>
-public sealed class CharacterWriteOperations(IPersistenceContextProvider persistence, IDataSource<GameConfiguration> configurations, ILoginServer login, AdminOperationExecutor executor, AdminChangeConfirmation confirmations, AdminWriteSettings settings)
+/// <param name="servers">The game server registry.</param>
+public sealed class CharacterWriteOperations(IPersistenceContextProvider persistence, IDataSource<GameConfiguration> configurations, ILoginServer login, AdminOperationExecutor executor, AdminChangeConfirmation confirmations, AdminWriteSettings settings, IServerProvider servers)
 {
     private static readonly IReadOnlyDictionary<string, AttributeDefinition> EditableStats = new Dictionary<string, AttributeDefinition>(StringComparer.Ordinal)
     {
@@ -115,24 +114,18 @@ public sealed class CharacterWriteOperations(IPersistenceContextProvider persist
             await executor.RequireAsync(AdminRoles.Administrator, cancellationToken).ConfigureAwait(false);
         }
 
-        var reservationId = RandomNumberGenerator.GetInt32(byte.MaxValue + 1, int.MaxValue);
-        JsonObject? result = null;
-        Exception? operationFailure = null;
-        try
-        {
-            if (!await login.TryReserveAccountAsync(account.LoginName, reservationId).ConfigureAwait(false))
-            {
-                throw new AdminOperationException("The account is online, reserved, or its login state is unavailable. Disconnect it first; in distributed deployments, log in and out once to initialize a new account's login state.");
-            }
+        return await OfflineAccountAccess.ExecuteAsync(login, servers, account.LoginName, ChangeReservedAsync, cancellationToken).ConfigureAwait(false);
 
+        async ValueTask<JsonObject> ChangeReservedAsync(CancellationToken editCancellationToken)
+        {
             // Reload only after the login reservation: an online session may have saved just before it was acquired.
             using var edit = persistence.CreateNewPlayerContext(config);
-            account = await edit.GetAccountByCharacterNameAsync(characterName, cancellationToken).ConfigureAwait(false)
+            account = await edit.GetAccountByCharacterNameAsync(characterName, editCancellationToken).ConfigureAwait(false)
                 ?? throw new AdminOperationException("Character no longer exists.");
             var character = account.Characters.Single(c => c.Name == characterName);
             if (account.State is not (AccountState.Normal or AccountState.Banned or AccountState.TemporarilyBanned) || character.CharacterStatus == CharacterStatus.GameMaster)
             {
-                await executor.RequireAsync(AdminRoles.Administrator, cancellationToken).ConfigureAwait(false);
+                await executor.RequireAsync(AdminRoles.Administrator, editCancellationToken).ConfigureAwait(false);
             }
 
             var before = Snapshot(character);
@@ -182,7 +175,7 @@ public sealed class CharacterWriteOperations(IPersistenceContextProvider persist
             }
 
             var operation = itemId is null ? "characters_update" : "characters_add_item";
-            result = await AdminChangeExecution.RunAsync(
+            return await AdminChangeExecution.RunAsync(
                 executor,
                 confirmations,
                 actor,
@@ -233,34 +226,10 @@ public sealed class CharacterWriteOperations(IPersistenceContextProvider persist
                         storage.Items.Add(item);
                     }
 
-                    await AdminChangeExecution.SaveAsync(edit, cancellationToken).ConfigureAwait(false);
+                    await AdminChangeExecution.SaveAsync(edit, editCancellationToken).ConfigureAwait(false);
                 },
-                cancellationToken).ConfigureAwait(false);
+                editCancellationToken).ConfigureAwait(false);
         }
-        catch (Exception exception)
-        {
-            operationFailure = exception;
-        }
-
-        try
-        {
-            // Also release after a lost reserve response; ownership checking makes this safe for online accounts.
-            await login.ReleaseAccountReservationAsync(account.LoginName, reservationId).ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            throw new AdminOperationException(
-                "The offline edit or preview finished, but releasing its login reservation could not be confirmed. Check the current state and login coordination before retrying.",
-                AdminOperationErrorKind.Uncertain,
-                operationFailure is null ? exception : new AggregateException(operationFailure, exception));
-        }
-
-        if (operationFailure is not null)
-        {
-            ExceptionDispatchInfo.Capture(operationFailure).Throw();
-        }
-
-        return result ?? throw new InvalidOperationException("The offline operation produced no result.");
     }
 
     private sealed class PreviewStorage : ItemStorage

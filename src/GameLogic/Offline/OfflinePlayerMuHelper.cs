@@ -38,6 +38,7 @@ public sealed class OfflinePlayerMuHelper : AsyncDisposable
     private Task? _loopTask;
 
     private bool _isDead;
+    private bool _stopRequested;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="OfflinePlayerMuHelper"/> class.
@@ -134,6 +135,24 @@ public sealed class OfflinePlayerMuHelper : AsyncDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
             await this.SafeTickAsync(cancellationToken).ConfigureAwait(false);
+            if (this._stopRequested && this._player.AccountLoginName is { } loginName)
+            {
+                // Stop only after releasing persistence; teardown waits for this loop to exit.
+                _ = this.StopSessionAsync(loginName);
+                return;
+            }
+        }
+    }
+
+    private async ValueTask StopSessionAsync(string loginName)
+    {
+        try
+        {
+            await this._player.GameContext.OfflinePlayerManager.StopAsync(loginName).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            this._player.Logger.LogError(ex, "Error stopping offline player session for {LoginName}.", loginName);
         }
     }
 
@@ -165,7 +184,7 @@ public sealed class OfflinePlayerMuHelper : AsyncDisposable
         // with the combat handler - so nothing mutates the skill list while combat is enumerating it.
         await this._player.DrainPendingBotActionsAsync().ConfigureAwait(false);
 
-        if (await this.HandleDeathAsync().ConfigureAwait(false))
+        if (this.HandleDeath())
         {
             return;
         }
@@ -182,10 +201,7 @@ public sealed class OfflinePlayerMuHelper : AsyncDisposable
 
         if (!await this._zenHandler.DeductZenAsync().ConfigureAwait(false))
         {
-            if (this._player.Account?.LoginName is { } loginName)
-            {
-                await this._player.GameContext.OfflinePlayerManager.StopAsync(loginName).ConfigureAwait(false);
-            }
+            this._stopRequested = true;
 
             return;
         }
@@ -221,7 +237,7 @@ public sealed class OfflinePlayerMuHelper : AsyncDisposable
         await this._combatHandler.PerformAttackAsync().ConfigureAwait(false);
     }
 
-    private async ValueTask<bool> HandleDeathAsync()
+    private bool HandleDeath()
     {
         if (this._isDead)
         {
@@ -247,7 +263,7 @@ public sealed class OfflinePlayerMuHelper : AsyncDisposable
             if (this._player.Account?.LoginName is { } loginName)
             {
                 this._player.Logger.LogInformation("Offline player died and successfully respawned. Stopping session for {0}.", loginName);
-                await this._player.GameContext.OfflinePlayerManager.StopAsync(loginName).ConfigureAwait(false);
+                this._stopRequested = true;
             }
 
             return true;
