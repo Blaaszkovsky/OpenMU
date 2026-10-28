@@ -146,6 +146,7 @@ internal sealed class Program : IDisposable
             await exitCts.CancelAsync().ConfigureAwait(false);
             return;
         }
+
         using var applicationStoppingRegistration = program._serverHost!.Services
             .GetRequiredService<IHostApplicationLifetime>()
             .ApplicationStopping.Register(exitCts.Cancel);
