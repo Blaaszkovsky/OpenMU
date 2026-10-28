@@ -26,6 +26,8 @@ public sealed class IllusionTempleContext : MiniGameContext
     private readonly ConcurrentDictionary<Guid, Channel> _channels = new();
     private readonly List<NonPlayerCharacter> _statues = [];
     private readonly List<(Point Position, byte Attributes)> _waterTiles = [];
+
+    // Acquire a player's persistence lock before this lock; never wait for another player's lock while holding either.
     private readonly AsyncLock _matchLock = new();
     private readonly IllusionTempleStartConfiguration _settings;
     private readonly byte[] _scores = new byte[2];
@@ -65,7 +67,8 @@ public sealed class IllusionTempleContext : MiniGameContext
     protected override TimeSpan RemainingTime => this.State == MiniGameState.Playing
         ? (this._endsAtUtc - DateTime.UtcNow).AtLeast(TimeSpan.Zero) : TimeSpan.Zero;
 
-    private bool IsMatchPlaying => this.State == MiniGameState.Playing && !this.GameEndedToken.IsCancellationRequested;
+    private bool IsMatchPlaying => !this.IsDisposed && !this.IsDisposing
+        && this.State == MiniGameState.Playing && !this.GameEndedToken.IsCancellationRequested;
 
     /// <inheritdoc />
     public override bool IsItemAllowedToEquip(Item item) => !item.IsTransformationRing();
@@ -129,7 +132,13 @@ public sealed class IllusionTempleContext : MiniGameContext
 
             var channel = new Channel(player, npc, player.Position, player.Attributes![Stats.CurrentHealth], player.Attributes[Stats.CurrentShield]);
             this._channels[character.Id] = channel;
-            _ = this.RunChannelAsync(character.Id, channel);
+            var cancellationToken = this.GameEndedToken;
+
+            // The packet's persistence scope must not flow into the delayed interaction.
+            using (ExecutionContext.SuppressFlow())
+            {
+                _ = Task.Run(() => this.RunChannelAsync(character.Id, channel, cancellationToken));
+            }
         }
     }
 
@@ -206,7 +215,17 @@ public sealed class IllusionTempleContext : MiniGameContext
             }
 
             this._channels.TryRemove(killed.SelectedCharacter!.Id, out _);
-            await this.DropRelicAsync(killed).ConfigureAwait(false);
+            if (this._holder == killed)
+            {
+                var cancellationToken = this.GameEndedToken;
+
+                // The death hook can hold the attacker's lock; never await the victim's lock from that flow.
+                using (ExecutionContext.SuppressFlow())
+                {
+                    _ = Task.Run(() => this.DropRelicAfterDeathAsync(killed, cancellationToken));
+                }
+            }
+
             if (killer is Player player && this.GetMember(player) is { } member && member.Team != this.GetTeam(killed))
             {
                 member.Points = Math.Min(byte.MaxValue, member.Points + this._settings.SkillPointsPerKill);
@@ -219,20 +238,23 @@ public sealed class IllusionTempleContext : MiniGameContext
     /// <param name="player">The participant.</param>
     public async ValueTask ClaimRewardAsync(Player player)
     {
-        using (await this._matchLock.LockAsync().ConfigureAwait(false))
+        await player.RunPersistenceExclusiveAsync(async () =>
         {
-            if (this.State != MiniGameState.Ended || !player.IsAlive || player.CurrentMiniGame != this
-                || this.GetMember(player) is not { RewardClaimed: false } member)
+            using (await this._matchLock.LockAsync().ConfigureAwait(false))
             {
-                return;
-            }
+                if (this.IsDisposed || this.IsDisposing || this.State != MiniGameState.Ended || !player.IsAlive || player.CurrentMiniGame != this
+                    || this.GetMember(player) is not { RewardClaimed: false } member)
+                {
+                    return;
+                }
 
-            member.RewardClaimed = true;
-            var experienceBefore = player.SelectedCharacter!.Experience;
-            var rank = member.Team == this._winningTeam ? 1 : 2;
-            await this.GiveRewardsAndGetBonusScoreAsync(player, rank).ConfigureAwait(false);
-            member.Experience = (int)Math.Min((ulong)int.MaxValue, (ulong)(player.SelectedCharacter.Experience - experienceBefore));
-        }
+                member.RewardClaimed = true;
+                var experienceBefore = player.SelectedCharacter!.Experience;
+                var rank = member.Team == this._winningTeam ? 1 : 2;
+                await this.GiveRewardsAndGetBonusScoreAsync(player, rank).ConfigureAwait(false);
+                member.Experience = (int)Math.Min((ulong)int.MaxValue, (ulong)(player.SelectedCharacter.Experience - experienceBefore));
+            }
+        }).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -251,12 +273,15 @@ public sealed class IllusionTempleContext : MiniGameContext
         this._endsAtUtc = DateTime.UtcNow.Add(this.Definition.GameDuration);
         foreach (var player in players)
         {
-            this.ApplyTeamSkin(player);
-            await player.InvokeViewPlugInAsync<IIllusionTempleViewPlugIn>(view => view.ShowPhaseAsync(this.Definition.GameLevel, 2)).ConfigureAwait(false);
-            if (this.GetTeamSpawnGate(player) is { } gate)
+            await player.RunPersistenceExclusiveAsync(async () =>
             {
-                await player.WarpToAsync(gate).ConfigureAwait(false);
-            }
+                this.ApplyTeamSkin(player);
+                await player.InvokeViewPlugInAsync<IIllusionTempleViewPlugIn>(view => view.ShowPhaseAsync(this.Definition.GameLevel, 2)).ConfigureAwait(false);
+                if (this.GetTeamSpawnGate(player) is { } gate)
+                {
+                    await player.WarpToAsync(gate).ConfigureAwait(false);
+                }
+            }).ConfigureAwait(false);
         }
 
         _ = this.RunInfoLoopAsync();
@@ -290,16 +315,23 @@ public sealed class IllusionTempleContext : MiniGameContext
     {
         if (args.Object is Player player)
         {
-            using (await this._matchLock.LockAsync().ConfigureAwait(false))
+            await player.RunPersistenceExclusiveAsync(async () =>
             {
-                if (player.SelectedCharacter is { } character)
+                using (await this._matchLock.LockAsync().ConfigureAwait(false))
                 {
-                    this._channels.TryRemove(character.Id, out _);
-                }
+                    if (player.SelectedCharacter is { } character)
+                    {
+                        this._channels.TryRemove(character.Id, out _);
+                    }
 
-                await this.DropRelicAsync(player).ConfigureAwait(false);
-                this.RemoveTeamSkin(player);
-            }
+                    if (this.IsMatchPlaying)
+                    {
+                        await this.DropRelicAsync(player).ConfigureAwait(false);
+                    }
+
+                    await this.RemovePlayerEventStateAsync(player).ConfigureAwait(false);
+                }
+            }).ConfigureAwait(false);
         }
 
         await base.OnObjectRemovedFromMapAsync(args).ConfigureAwait(false);
@@ -313,45 +345,59 @@ public sealed class IllusionTempleContext : MiniGameContext
             return;
         }
 
-        using (await this._matchLock.LockAsync().ConfigureAwait(false))
+        await args.Picker.RunPersistenceExclusiveAsync(async () =>
         {
-            if (!this.IsMatchPlaying || this.GetMember(args.Picker) is null || this._holder is not null || dropped != this._relicDrop)
+            using (await this._matchLock.LockAsync().ConfigureAwait(false))
             {
-                if (args.Picker.Inventory?.GetItem(dropped.Item.ItemSlot) is { } item && IsRelic(item))
+                if (!this.IsMatchPlaying || this.GetMember(args.Picker) is null || this._holder is not null || dropped != this._relicDrop)
                 {
-                    await args.Picker.DestroyInventoryItemAsync(item).ConfigureAwait(false);
+                    if (args.Picker.Inventory?.GetItem(dropped.Item.ItemSlot) is { } item && IsRelic(item))
+                    {
+                        await args.Picker.DestroyInventoryItemAsync(item).ConfigureAwait(false);
+                    }
+
+                    return;
                 }
 
-                return;
+                this._holder = args.Picker;
+                this._relicDrop = null;
+                await this.ApplyCarrierSlowAsync(args.Picker).ConfigureAwait(false);
             }
-
-            this._holder = args.Picker;
-            this._relicDrop = null;
-            await this.ApplyCarrierSlowAsync(args.Picker).ConfigureAwait(false);
-        }
+        }).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
     protected override async ValueTask GameEndedAsync(ICollection<Player> finishers)
     {
-        this._channels.Clear();
+        using (await this._matchLock.LockAsync().ConfigureAwait(false))
+        {
+            this._channels.Clear();
 
-        // The legacy result window treats scores below two as a loss for both teams.
-        this._winningTeam = Math.Max(this._scores[0], this._scores[1]) < 2 || this._scores[0] == this._scores[1]
-            ? byte.MaxValue : this._scores[0] > this._scores[1] ? (byte)0 : (byte)1;
+            // The legacy result window treats scores below two as a loss for both teams.
+            this._winningTeam = Math.Max(this._scores[0], this._scores[1]) < 2 || this._scores[0] == this._scores[1]
+                ? byte.MaxValue : this._scores[0] > this._scores[1] ? (byte)0 : (byte)1;
+        }
+
         foreach (var player in finishers)
         {
-            await this.RemoveEventEffectsAsync(player).ConfigureAwait(false);
-            await this.RemoveRelicsAsync(player).ConfigureAwait(false);
-            this.RemoveTeamSkin(player);
+            await player.RunPersistenceExclusiveAsync(async () =>
+            {
+                using (await this._matchLock.LockAsync().ConfigureAwait(false))
+                {
+                    await this.RemovePlayerEventStateAsync(player).ConfigureAwait(false);
+                }
+            }).ConfigureAwait(false);
             await this.ClaimRewardAsync(player).ConfigureAwait(false);
         }
 
-        this._holder = null;
-        if (this._relicDrop is { } drop)
+        using (await this._matchLock.LockAsync().ConfigureAwait(false))
         {
-            await drop.DisposeAsync().ConfigureAwait(false);
-            this._relicDrop = null;
+            this._holder = null;
+            if (this._relicDrop is { } drop)
+            {
+                await drop.DisposeAsync().ConfigureAwait(false);
+                this._relicDrop = null;
+            }
         }
 
         var results = finishers.Where(player => this.GetMember(player) is not null)
@@ -370,12 +416,20 @@ public sealed class IllusionTempleContext : MiniGameContext
     /// <inheritdoc />
     protected override async ValueTask DisposeAsyncCore()
     {
-        this._channels.Clear();
+        using (await this._matchLock.LockAsync().ConfigureAwait(false))
+        {
+            this._channels.Clear();
+        }
+
         foreach (var player in this._skins.Keys)
         {
-            await this.RemoveEventEffectsAsync(player).ConfigureAwait(false);
-            await this.RemoveRelicsAsync(player).ConfigureAwait(false);
-            this.RemoveTeamSkin(player);
+            await player.RunPersistenceExclusiveAsync(async () =>
+            {
+                using (await this._matchLock.LockAsync().ConfigureAwait(false))
+                {
+                    await this.RemovePlayerEventStateAsync(player).ConfigureAwait(false);
+                }
+            }).ConfigureAwait(false);
         }
 
         foreach (var statue in this._statues.Where(statue => this.Map.GetObject(statue.Id) != statue))
@@ -403,30 +457,35 @@ public sealed class IllusionTempleContext : MiniGameContext
         && this.CanInteract(channel.Player, channel.Npc) && channel.Player.Position == channel.Position
         && channel.Player.Attributes![Stats.CurrentHealth] >= channel.Health && channel.Player.Attributes[Stats.CurrentShield] >= channel.Shield;
 
-    private async Task RunChannelAsync(Guid characterId, Channel channel)
+    private async Task RunChannelAsync(Guid characterId, Channel channel, CancellationToken cancellationToken)
     {
         try
         {
             var end = DateTime.UtcNow.Add(this._settings.CaptureDuration);
             while (this.IsChannelValid(characterId, channel) && DateTime.UtcNow < end)
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(100), this.GameEndedToken).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken).ConfigureAwait(false);
             }
 
-            using (await this._matchLock.LockAsync().ConfigureAwait(false))
-            {
-                if (this.IsChannelValid(characterId, channel) && DateTime.UtcNow >= end)
+            await channel.Player.RunPersistenceExclusiveAsync(
+                async () =>
                 {
-                    if (channel.Npc.Definition.Number == 380)
+                    using (await this._matchLock.LockAsync(cancellationToken).ConfigureAwait(false))
                     {
-                        await this.CaptureRelicAsync(channel.Player).ConfigureAwait(false);
+                        if (this.IsChannelValid(characterId, channel) && DateTime.UtcNow >= end)
+                        {
+                            if (channel.Npc.Definition.Number == 380)
+                            {
+                                await this.CaptureRelicAsync(channel.Player).ConfigureAwait(false);
+                            }
+                            else
+                            {
+                                await this.DepositRelicAsync(channel.Player).ConfigureAwait(false);
+                            }
+                        }
                     }
-                    else
-                    {
-                        await this.DepositRelicAsync(channel.Player).ConfigureAwait(false);
-                    }
-                }
-            }
+                },
+                cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -445,6 +504,33 @@ public sealed class IllusionTempleContext : MiniGameContext
                     this._channels.TryRemove(characterId, out _);
                 }
             }
+        }
+    }
+
+    private async Task DropRelicAfterDeathAsync(Player player, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await player.RunPersistenceExclusiveAsync(
+                async () =>
+                {
+                    using (await this._matchLock.LockAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        if (this.IsMatchPlaying)
+                        {
+                            await this.DropRelicAsync(player).ConfigureAwait(false);
+                        }
+                    }
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Event cleanup consumes any remaining relic instead of creating a new ground token.
+        }
+        catch (Exception exception)
+        {
+            this.Logger.LogError(exception, "{context}: Could not drop the dead participant's Illusion Temple relic.", this);
         }
     }
 
@@ -552,6 +638,17 @@ public sealed class IllusionTempleContext : MiniGameContext
         foreach (var item in player.Inventory?.Items.Where(IsRelic).ToArray() ?? [])
         {
             await player.DestroyInventoryItemAsync(item).ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask RemovePlayerEventStateAsync(Player player)
+    {
+        await this.RemoveEventEffectsAsync(player).ConfigureAwait(false);
+        await this.RemoveRelicsAsync(player).ConfigureAwait(false);
+        this.RemoveTeamSkin(player);
+        if (this._holder == player)
+        {
+            this._holder = null;
         }
     }
 

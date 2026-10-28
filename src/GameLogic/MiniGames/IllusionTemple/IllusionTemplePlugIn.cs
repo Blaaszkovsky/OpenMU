@@ -65,9 +65,12 @@ public sealed class IllusionTemplePlugIn : IPlayerTalkToNpcPlugIn, IPlayerSpawnG
             return;
         }
 
-        foreach (var item in player.Inventory?.Items.Where(item => item.Definition is { Group: 14, Number: 64 }).ToArray() ?? [])
+        await player.RunPersistenceExclusiveAsync(async () =>
         {
-            await player.DestroyInventoryItemAsync(item).ConfigureAwait(false);
-        }
+            foreach (var item in player.Inventory?.Items.Where(item => item.Definition is { Group: 14, Number: 64 }).ToArray() ?? [])
+            {
+                await player.DestroyInventoryItemAsync(item).ConfigureAwait(false);
+            }
+        }).ConfigureAwait(false);
     }
 }

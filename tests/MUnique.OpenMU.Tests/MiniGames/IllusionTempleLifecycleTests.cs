@@ -4,6 +4,7 @@
 
 namespace MUnique.OpenMU.Tests.MiniGames;
 
+using System.Reflection;
 using Microsoft.Extensions.Logging.Abstractions;
 using MUnique.OpenMU.AttributeSystem;
 using MUnique.OpenMU.DataModel.Configuration;
@@ -30,6 +31,181 @@ using MiniGameDefinition = MUnique.OpenMU.Persistence.BasicModel.MiniGameDefinit
 [TestFixture]
 public class IllusionTempleLifecycleTests
 {
+    /// <summary>A detached NPC channel must reacquire the player's persistence lock before changing its inventory.</summary>
+    /// <param name="deposit">Whether to deposit an already captured relic instead of capturing a new one.</param>
+    [TestCase(false)]
+    [TestCase(true)]
+    [Timeout(90_000)]
+    public async Task NpcChannelWaitsForIndependentPersistenceOperationAsync(bool deposit)
+    {
+        await using var world = await TestWorld.CreateAsync(2).ConfigureAwait(false);
+        await world.StartAsync().ConfigureAwait(false);
+        var player = world.Players[0];
+        var npc = GetNpcs(world.Game).First(candidate => candidate.Definition.Number == 380);
+        player.Position = npc.Position;
+        if (deposit)
+        {
+            await InteractUntilAsync(world.Game, player, npc, () => HasRelic(player), "The fixture must capture a relic before testing a deposit.").ConfigureAwait(false);
+            npc = GetNpcs(world.Game).Single(candidate => candidate.Definition.Number == 383 + world.Game.GetTeam(player));
+            player.Position = npc.Position;
+        }
+
+        var appear = Mock.Get(player.ViewPlugIns.GetPlugIn<IItemAppearPlugIn>()!);
+        var removed = Mock.Get(player.ViewPlugIns.GetPlugIn<IItemRemovedPlugIn>()!);
+        appear.Invocations.Clear();
+        removed.Invocations.Clear();
+
+        // The packet funnel holds this lock when it starts the detached channel.
+        await player.RunPersistenceExclusiveAsync(() => world.Game.TalkToEventNpcAsync(player, npc)).ConfigureAwait(false);
+        var lockHeld = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var saving = Task.Run(() => player.RunPersistenceExclusiveAsync(async () =>
+        {
+            lockHeld.SetResult();
+            await release.Task.ConfigureAwait(false);
+        }).AsTask());
+
+        try
+        {
+            await lockHeld.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
+            Assert.Multiple(() =>
+            {
+                Assert.That(HasRelic(player), Is.EqualTo(deposit), "The channel must not change inventory while an independent persistence operation holds the lock.");
+                appear.Verify(view => view.ItemAppearAsync(It.IsAny<Item>()), Times.Never);
+                removed.Verify(view => view.RemoveItemAsync(It.IsAny<byte>()), Times.Never);
+            });
+        }
+        finally
+        {
+            release.TrySetResult();
+            await saving.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        }
+
+        await WaitUntilAsync(() => HasRelic(player) != deposit, TimeSpan.FromSeconds(5), "The valid channel must finish after the persistence lock is released.").ConfigureAwait(false);
+    }
+
+    /// <summary>Event completion and disposal must serialize relic deletion and rewards against player saves.</summary>
+    /// <param name="dispose">Whether to dispose the running match instead of ending it normally.</param>
+    [TestCase(false)]
+    [TestCase(true)]
+    [Timeout(90_000)]
+    public async Task MatchCleanupWaitsForIndependentPersistenceOperationAsync(bool dispose)
+    {
+        await using var world = await TestWorld.CreateAsync(2, winningScore: 3).ConfigureAwait(false);
+        await world.StartAsync(fromPlayerPacket: true).ConfigureAwait(false);
+        var player = world.Players[0];
+        if (!dispose)
+        {
+            // Only rank one earns the configured reward; two deposits establish a winner before clock expiry.
+            for (var score = 0; score < 2; score++)
+            {
+                var scoringStatue = GetNpcs(world.Game).First(npc => npc.Definition.Number == 380);
+                player.Position = scoringStatue.Position;
+                await InteractUntilAsync(world.Game, player, scoringStatue, () => HasRelic(player), "The winner must capture each scoring relic.").ConfigureAwait(false);
+                var pedestal = GetNpcs(world.Game).Single(npc => npc.Definition.Number == 383 + world.Game.GetTeam(player));
+                player.Position = pedestal.Position;
+                await InteractUntilAsync(world.Game, player, pedestal, () => !HasRelic(player), "The winner must complete each normal deposit.").ConfigureAwait(false);
+                await WaitUntilAsync(() => GetNpcs(world.Game).Count(npc => npc.Definition.Number == 380) == 2, TimeSpan.FromSeconds(5), "A completed score must restore both statues.").ConfigureAwait(false);
+            }
+        }
+
+        var statue = GetNpcs(world.Game).First(npc => npc.Definition.Number == 380);
+        player.Position = statue.Position;
+        await InteractUntilAsync(world.Game, player, statue, () => HasRelic(player), "The fixture must capture a relic before match cleanup.").ConfigureAwait(false);
+        var experienceBefore = player.SelectedCharacter!.Experience;
+        var removed = Mock.Get(player.ViewPlugIns.GetPlugIn<IItemRemovedPlugIn>()!);
+        removed.Invocations.Clear();
+        var lockHeld = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var saving = Task.Run(() => player.RunPersistenceExclusiveAsync(async () =>
+        {
+            lockHeld.SetResult();
+            await release.Task.ConfigureAwait(false);
+        }).AsTask());
+        Task? disposing = null;
+        try
+        {
+            await lockHeld.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            if (dispose)
+            {
+                disposing = Task.Run(() => world.Game.DisposeAsync().AsTask());
+            }
+            else
+            {
+                typeof(MiniGameContext).GetMethod("FinishEvent", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(world.Game, null);
+            }
+
+            await WaitUntilAsync(() => dispose ? world.Game.IsDisposing : world.Game.State == MiniGameState.Ended, TimeSpan.FromSeconds(5), "The match must enter its cleanup path.").ConfigureAwait(false);
+            await Task.Delay(200).ConfigureAwait(false);
+            Assert.Multiple(() =>
+            {
+                Assert.That(HasRelic(player), Is.True, "Cleanup must not delete a relic during an independent player save.");
+                Assert.That(player.SelectedCharacter.Experience, Is.EqualTo(experienceBefore), "Finishing rewards must wait for the persistence lock.");
+                removed.Verify(view => view.RemoveItemAsync(It.IsAny<byte>()), Times.Never);
+            });
+        }
+        finally
+        {
+            release.TrySetResult();
+            await saving.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            if (disposing is not null)
+            {
+                await disposing.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            }
+        }
+
+        await WaitUntilAsync(() => !HasRelic(player), TimeSpan.FromSeconds(5), "Cleanup must delete the relic after the persistence lock is released.").ConfigureAwait(false);
+        if (!dispose)
+        {
+            await WaitUntilAsync(() => player.SelectedCharacter.Experience > experienceBefore, TimeSpan.FromSeconds(5), "The configured finishing reward must follow serialized cleanup.").ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>An attack may not wait for a victim's persistence lock or delete its relic while that lock is held.</summary>
+    [Test]
+    [Timeout(90_000)]
+    public async Task CarrierDeathDoesNotNestAttackerAndVictimPersistenceLocksAsync()
+    {
+        await using var world = await TestWorld.CreateAsync(2).ConfigureAwait(false);
+        await world.StartAsync().ConfigureAwait(false);
+        var carrier = world.Players[0];
+        var attacker = world.Players[1];
+        var statue = GetNpcs(world.Game).First(npc => npc.Definition.Number == 380);
+        carrier.Position = statue.Position;
+        await InteractUntilAsync(world.Game, carrier, statue, () => HasRelic(carrier), "The fixture must capture a relic before carrier death.").ConfigureAwait(false);
+        carrier.Attributes![Stats.CurrentShield] = 0;
+        carrier.Attributes[Stats.CurrentHealth] = 1;
+        var lockHeld = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var saving = Task.Run(() => carrier.RunPersistenceExclusiveAsync(async () =>
+        {
+            lockHeld.SetResult();
+            await release.Task.ConfigureAwait(false);
+        }).AsTask());
+        try
+        {
+            await lockHeld.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            await attacker.RunPersistenceExclusiveAsync(async () =>
+            {
+                await carrier.AttackByAsync(attacker, null, false).ConfigureAwait(false);
+            }).AsTask().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            Assert.Multiple(() =>
+            {
+                Assert.That(carrier.IsAlive, Is.False);
+                Assert.That(HasRelic(carrier), Is.True, "The death callback must defer persisted relic deletion while the victim's lock is held.");
+                Assert.That(GetDrops(world.Game).Any(drop => IsRelic(drop.Item)), Is.False);
+            });
+        }
+        finally
+        {
+            release.TrySetResult();
+            await saving.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        }
+
+        await WaitUntilAsync(() => !HasRelic(carrier) && GetDrops(world.Game).Any(drop => IsRelic(drop.Item)), TimeSpan.FromSeconds(2), "The relic must drop after the victim's persistence lock is released.").ConfigureAwait(false);
+    }
+
     /// <summary>Ten admitted players are split evenly, and the ordinary attack route rejects friendly fire.</summary>
     [Test]
     [Timeout(90_000)]
@@ -361,7 +537,7 @@ public class IllusionTempleLifecycleTests
 
         public IllusionTempleContext Game { get; private set; } = null!;
 
-        public static async ValueTask<TestWorld> CreateAsync(int playerCount, TimeSpan? itemDropDuration = null)
+        public static async ValueTask<TestWorld> CreateAsync(int playerCount, TimeSpan? itemDropDuration = null, byte winningScore = 2)
         {
             var provider = new InMemoryPersistenceContextProvider();
             await new Persistence.Initialization.VersionSeasonSix.DataInitialization(provider, NullLoggerFactory.Instance)
@@ -380,8 +556,8 @@ public class IllusionTempleLifecycleTests
             definition.GameDuration = TimeSpan.FromMinutes(3);
             definition.ExitDuration = TimeSpan.Zero;
 
-            // Fixture-only compression: keep initialized maps, tickets, NPC definitions, player actions, and reward rules,
-            // while shortening only the channel/effect/drop timers and skipping active lobby/countdown waits below.
+            // Fixture-only compression: keep initialized maps, tickets, NPC definitions, player actions, and rewards,
+            // while shortening channel/effect/drop timers and choosing the score threshold. StartAsync skips lobby/countdown waits.
             var startPlugIn = new IllusionTempleStartPlugIn
             {
                 Configuration = new IllusionTempleStartConfiguration
@@ -390,7 +566,7 @@ public class IllusionTempleLifecycleTests
                     TaskDuration = TimeSpan.FromMinutes(3),
                     PreStartMessageDelay = TimeSpan.Zero,
                     MinimumPlayers = 2,
-                    WinningScore = 2,
+                    WinningScore = winningScore,
                     SkillPointsPerKill = 4,
                     CaptureDuration = TimeSpan.FromMilliseconds(150),
                     SkillDuration = TimeSpan.FromSeconds(3),
@@ -449,13 +625,25 @@ public class IllusionTempleLifecycleTests
             return new TestWorld(gameContext, definition, players, eventPlugIn);
         }
 
-        public async ValueTask StartAsync()
+        public async ValueTask StartAsync(bool fromPlayerPacket = false)
         {
-            var startPlugIn = this.Context.PlugInManager.GetStrategy<MiniGameType, IPeriodicMiniGameStartPlugIn>(MiniGameType.IllusionTemple)!;
-            startPlugIn.ForceStart();
-            await startPlugIn.ExecuteTaskAsync(this.Context).ConfigureAwait(false);
-            await startPlugIn.ExecuteTaskAsync(this.Context).ConfigureAwait(false);
-            this.Game = (IllusionTempleContext)await this.Context.MiniGames.GetOrCreateAsync(this.Definition, this.Players[0]).ConfigureAwait(false);
+            async ValueTask OpenRegistrationAsync()
+            {
+                var startPlugIn = this.Context.PlugInManager.GetStrategy<MiniGameType, IPeriodicMiniGameStartPlugIn>(MiniGameType.IllusionTemple)!;
+                startPlugIn.ForceStart();
+                await startPlugIn.ExecuteTaskAsync(this.Context).ConfigureAwait(false);
+                await startPlugIn.ExecuteTaskAsync(this.Context).ConfigureAwait(false);
+                this.Game = (IllusionTempleContext)await this.Context.MiniGames.GetOrCreateAsync(this.Definition, this.Players[0]).ConfigureAwait(false);
+            }
+
+            if (fromPlayerPacket)
+            {
+                await this.Players[0].RunPersistenceExclusiveAsync(OpenRegistrationAsync).ConfigureAwait(false);
+            }
+            else
+            {
+                await OpenRegistrationAsync().ConfigureAwait(false);
+            }
 
             await WaitUntilAsync(() => this.Game.State == MiniGameState.Open, TimeSpan.FromSeconds(5), "The real manager should open IT registration after ForceStart.").ConfigureAwait(false);
             foreach (var player in this.Players)

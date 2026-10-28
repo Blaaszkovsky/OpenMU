@@ -4,11 +4,13 @@
 
 namespace MUnique.OpenMU.Tests;
 
+using System.Threading;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using MUnique.OpenMU.AttributeSystem;
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.GameLogic;
+using MUnique.OpenMU.GameLogic.Administration;
 using MUnique.OpenMU.GameLogic.MiniGames;
 using MUnique.OpenMU.GameLogic.PlugIns.ChatCommands;
 using MUnique.OpenMU.GameLogic.PlugIns.PeriodicTasks;
@@ -64,6 +66,69 @@ public class MiniGameForceStartCommandTests
         await new StartBloodCastleEventChatCommandPlugIn().HandleCommandAsync(player, "/startbc").ConfigureAwait(false);
 
         strategyMock.Verify(s => s.ForceStart(), Times.Once);
+    }
+
+    /// <summary>A concurrent event request must not wait for the global gate while holding a participant's persistence lock.</summary>
+    [Test]
+    [Timeout(30_000)]
+    public async Task ConcurrentStartDoesNotNestPlayerLockAndEventGateAsync()
+    {
+        var (player, strategyMock, context) = await this.CreatePlayerOnServerAsync(isEnabled: true).ConfigureAwait(false);
+        var firstDisposalEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var mayAcquireParticipant = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var packetEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var recovery = new CancellationTokenSource();
+        var disposals = 0;
+        strategyMock.Setup(strategy => strategy.DisposeRunningGamesAsync(context)).Returns(async () =>
+        {
+            if (Interlocked.Increment(ref disposals) == 1)
+            {
+                firstDisposalEntered.TrySetResult();
+                await mayAcquireParticipant.Task.ConfigureAwait(false);
+                await player.RunPersistenceExclusiveAsync(() => ValueTask.CompletedTask, recovery.Token).ConfigureAwait(false);
+            }
+        });
+        var administration = GameMasterEventActions.StartAsync(context, MiniGameType.BloodCastle, true, recovery.Token).AsTask();
+        Task? packet = null;
+        GameServerAdminResult? competingResult = null;
+        try
+        {
+            await firstDisposalEntered.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            packet = Task.Run(() => player.RunPersistenceExclusiveAsync(async () =>
+            {
+                packetEntered.TrySetResult();
+                competingResult = await GameMasterEventActions.StartAsync(context, MiniGameType.BloodCastle, true, CancellationToken.None).ConfigureAwait(false);
+            }).AsTask());
+            await packetEntered.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            mayAcquireParticipant.TrySetResult();
+            await packet.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            Assert.Multiple(() =>
+            {
+                Assert.That(competingResult?.Succeeded, Is.False, "A concurrent start must return a refusal instead of waiting with the participant lock held.");
+                Assert.That(competingResult?.Error, Is.Not.Null.And.Not.Empty, "The refused request must explain that it can be retried.");
+            });
+            Assert.That((await administration.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false)).Succeeded, Is.True);
+            strategyMock.Verify(strategy => strategy.ForceStart(), Times.Once);
+            Assert.That(disposals, Is.EqualTo(1), "Only the admitted request may dispose the running event.");
+        }
+        finally
+        {
+            mayAcquireParticipant.TrySetResult();
+            await recovery.CancelAsync().ConfigureAwait(false);
+            try
+            {
+                await administration.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Break the intentionally reproduced gate/player-lock cycle before test teardown.
+            }
+
+            if (packet is not null)
+            {
+                await packet.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            }
+        }
     }
 
     /// <summary>
