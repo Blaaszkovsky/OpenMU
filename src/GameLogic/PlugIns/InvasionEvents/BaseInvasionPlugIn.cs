@@ -192,7 +192,7 @@ public abstract class BaseInvasionPlugIn<TConfiguration> : PeriodicTaskBasePlugI
 
         try
         {
-            await player.InvokeViewPlugInAsync<IShowMessagePlugIn>(p => p.ShowMessageAsync(message, MessageType.GoldenCenter)).ConfigureAwait(false);
+            await player.ShowWorldMessageAsync(message, MessageType.GoldenCenter).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -225,7 +225,7 @@ public abstract class BaseInvasionPlugIn<TConfiguration> : PeriodicTaskBasePlugI
 
         try
         {
-            await player.InvokeViewPlugInAsync<IShowMessagePlugIn>(p => p.ShowMessageAsync(message, MessageType.GoldenCenter)).ConfigureAwait(false);
+            await player.ShowWorldMessageAsync(message, MessageType.GoldenCenter).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -353,7 +353,8 @@ public abstract class BaseInvasionPlugIn<TConfiguration> : PeriodicTaskBasePlugI
 
                 try
                 {
-                    await player.ShowLocalizedGoldenMessageAsync(nameof(PlayerMessage.InvasionMonsterDefeated), e.KillerName, translatedMapName, monsterName).ConfigureAwait(false);
+                    var message = player.GetLocalizedMessage(nameof(PlayerMessage.InvasionMonsterDefeated), e.KillerName, translatedMapName, monsterName);
+                    await player.ShowWorldMessageAsync(message, MessageType.GoldenCenter).ConfigureAwait(false);
                 }
                 catch
                 {

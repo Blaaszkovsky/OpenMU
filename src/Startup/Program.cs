@@ -132,6 +132,10 @@ internal sealed class Program : IDisposable
 
         using var program = new Program();
         await program.InitializeAsync(args).ConfigureAwait(false);
+        using var applicationStoppingRegistration = program._serverHost!.Services
+            .GetRequiredService<IHostApplicationLifetime>()
+            .ApplicationStopping.Register(exitCts.Cancel);
+
         while (!exitToken.IsCancellationRequested)
         {
             await Task.Delay(100).ConfigureAwait(false);

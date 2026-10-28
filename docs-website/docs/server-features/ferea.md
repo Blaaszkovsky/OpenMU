@@ -11,6 +11,13 @@ The warp costs 50,000 Zen, requires level 400, and arrives near 236,152.
 The isolated Baski prototype (900) remains near 215,165. Ordinary Knights (730),
 Archers (731), and Fighters (732) keep their hunting spawns.
 
+Baski's optional Wings of Unity group is configured at 5%; Baski respawns every
+five minutes. It shares Baski's one-drop limit with normal map and character groups:
+guaranteed groups take priority, and chance groups compete for any remaining slot.
+If their combined chance exceeds 100%, those chances become relative weights.
+A zero-chance group is disabled; a random value at a chance's upper boundary belongs
+to the next group rather than awarding the previous one.
+
 ## Lord of Ferea encounter
 
 Step into the entrance trigger at 110–114,58–62 (center 112,60) while open.

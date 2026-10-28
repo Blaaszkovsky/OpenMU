@@ -54,6 +54,32 @@ public class AddRenaItemUpdatePlugIn : UpdatePlugInBase
     /// <inheritdoc />
     public override DateTime CreatedAt => new(2026, 07, 26, 18, 0, 0, DateTimeKind.Utc);
 
+    /// <summary>
+    /// Resolves the plain Rena source without confusing it with the level3 Sign of Lord variant.
+    /// </summary>
+    /// <param name="configuration">The game configuration.</param>
+    /// <returns>The seeded or owner-defined plain source, if present.</returns>
+    internal static DropItemGroup? FindPlainRenaDropGroup(GameConfiguration configuration)
+    {
+        var groups = configuration.DropItemGroups.Where(group => group is not ItemDropItemGroup
+            && group.ItemLevel is null or 0
+            && group.PossibleItems.Any(item => item.Group == ItemGroup && item.Number == ItemNumber));
+        var seededId = GuidHelper.CreateGuid<DropItemGroup>(ItemGroup, ItemNumber);
+        return groups.FirstOrDefault(group => group.GetId() == seededId) ?? groups.FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Gets the default Blood Castle and Devil Square5–7 maps independently of translated names.
+    /// </summary>
+    /// <param name="configuration">The game configuration.</param>
+    /// <returns>The maps on which the Rena variants can drop by default.</returns>
+    internal static IEnumerable<GameMapDefinition> GetDefaultEventMaps(GameConfiguration configuration)
+    {
+        return configuration.Maps.Where(map =>
+            (map.Discriminator == 0 && (map.Number is >= 11 and <= 17 or 52))
+            || (map.Number == 32 && map.Discriminator is >= 5 and <= 7));
+    }
+
     /// <inheritdoc />
 #pragma warning disable CS1998
     protected override async ValueTask ApplyAsync(IContext context, GameConfiguration gameConfiguration)
@@ -75,9 +101,16 @@ public class AddRenaItemUpdatePlugIn : UpdatePlugInBase
             gameConfiguration.Items.Add(itemDefinition);
         }
 
-        var dropItemGroup = gameConfiguration.DropItemGroups.FirstOrDefault(group => group.PossibleItems.Contains(itemDefinition));
+        var dropItemGroup = FindPlainRenaDropGroup(gameConfiguration);
         if (dropItemGroup is null)
         {
+            // An owner may have converted the seeded source to another Rena variant.
+            // Preserve it instead of creating a second group with the same identifier.
+            if (gameConfiguration.DropItemGroups.Any(group => group.GetId() == GuidHelper.CreateGuid<DropItemGroup>(ItemGroup, ItemNumber)))
+            {
+                return;
+            }
+
             dropItemGroup = context.CreateNew<DropItemGroup>();
             dropItemGroup.SetGuid(ItemGroup, ItemNumber);
             dropItemGroup.PossibleItems.Add(itemDefinition);
@@ -90,9 +123,7 @@ public class AddRenaItemUpdatePlugIn : UpdatePlugInBase
 
         // Always (re-)wire, even if the item/group already existed - a previous, incomplete run
         // must not be able to skip this step.
-        var eventMaps = gameConfiguration.Maps
-            .Where(m => m.Name.Value?.StartsWith("Blood Castle") is true || m.Name.Value is "Devil Square 5" or "Devil Square 6" or "Devil Square 7");
-        foreach (var map in eventMaps)
+        foreach (var map in GetDefaultEventMaps(gameConfiguration))
         {
             if (!map.DropItemGroups.Contains(dropItemGroup))
             {

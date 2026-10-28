@@ -16,10 +16,14 @@ using MUnique.OpenMU.Persistence.InMemory;
 [TestFixture]
 internal class BaskiWingDropTest
 {
-    /// <summary>Verifies the guaranteed local wing consumes the sole drop before generic map rewards.</summary>
-    [TestCase(0.0)]
-    [TestCase(0.999999)]
-    public async Task BaskiDropsExactlyOneWingWithoutGenericDropsAsync(double randomValue)
+    /// <summary>Verifies the configured five percent reward and the shared one-drop cap.</summary>
+    [TestCase(0.0, false, true)]
+    [TestCase(0.049999, false, true)]
+    [TestCase(0.05, false, false)]
+    [TestCase(0.999999, false, false)]
+    [TestCase(0.0, true, false)]
+    [TestCase(0.999999, true, false)]
+    public async Task BaskiRewardRespectsChanceAndDropCapAsync(double randomValue, bool guaranteedMapReward, bool dropsWing)
     {
         var provider = new InMemoryPersistenceContextProvider();
         await new Persistence.Initialization.VersionSeasonSix.DataInitialization(provider, new NullLoggerFactory()).CreateInitialDataAsync(1, true).ConfigureAwait(false);
@@ -31,15 +35,30 @@ internal class BaskiWingDropTest
         randomizer.Setup(random => random.NextInt(It.IsAny<int>(), It.IsAny<int>())).Returns((int minimum, int maximum) => minimum);
         var generator = new DefaultDropGenerator(configuration, randomizer.Object);
         await using var player = await PlayerTestHelper.CreatePlayerAsync().ConfigureAwait(false);
-        var mapReward = new Mock<DropItemGroup>();
-        mapReward.SetupAllProperties();
-        mapReward.Object.Chance = 1;
-        mapReward.Object.ItemType = SpecialItemType.Money;
-        player.CurrentMap!.Definition.DropItemGroups.Add(mapReward.Object);
+        if (guaranteedMapReward)
+        {
+            var mapReward = new Mock<DropItemGroup>();
+            mapReward.SetupAllProperties();
+            mapReward.Object.Chance = 1;
+            mapReward.Object.ItemType = SpecialItemType.Money;
+            player.CurrentMap!.Definition.DropItemGroups.Add(mapReward.Object);
+        }
 
         var (items, money) = await generator.GenerateItemDropsAsync(baski, 100, player).ConfigureAwait(false);
-        var item = items.Single();
+        var droppedItems = items.ToList();
+        Assert.Multiple(() =>
+        {
+            Assert.That(baski.DropItemGroups.Single().Chance, Is.EqualTo(0.05));
+            Assert.That(baski.NumberOfMaximumItemDrops, Is.EqualTo(1));
+            Assert.That(droppedItems, Has.Count.EqualTo(dropsWing ? 1 : 0));
+            Assert.That(money.HasValue, Is.EqualTo(guaranteedMapReward));
+        });
+        if (!dropsWing)
+        {
+            return;
+        }
 
+        var item = droppedItems.Single();
         Assert.Multiple(() =>
         {
             Assert.That(item.Definition, Is.SameAs(configuration.Items.Single(definition => definition is { Group: 12, Number: 245 })));

@@ -5,7 +5,9 @@
 namespace MUnique.OpenMU.GameServer.RemoteView.MiniGames;
 
 using System.Runtime.InteropServices;
+using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.MiniGames;
+using MUnique.OpenMU.GameLogic.MiniGames.IllusionTemple;
 using MUnique.OpenMU.Network.Packets.ServerToClient;
 using MUnique.OpenMU.PlugIns;
 using MiniGameType = MUnique.OpenMU.DataModel.Configuration.MiniGameType;
@@ -29,6 +31,25 @@ public class UpdateMiniGameStateViewViewPlugIn : IUpdateMiniGameStateViewPlugIn
     /// <inheritdoc />
     public async ValueTask UpdateStateAsync(MiniGameType type, MiniGameState state)
     {
+        if (type == MiniGameType.IllusionTemple)
+        {
+            var phase = state switch
+            {
+                MiniGameState.Open => (byte)0,
+                MiniGameState.Closed => (byte)1,
+                MiniGameState.Playing => (byte)2,
+                MiniGameState.Ended => (byte)3,
+                _ => (byte?)null,
+            };
+            if (phase is { } currentPhase)
+            {
+                var level = (byte)Math.Clamp(this._player.CurrentMiniGame?.Definition.GameLevel ?? 0, byte.MinValue, byte.MaxValue);
+                await this._player.InvokeViewPlugInAsync<IIllusionTempleViewPlugIn>(p => p.ShowPhaseAsync(level, currentPhase)).ConfigureAwait(false);
+            }
+
+            return;
+        }
+
         if (TryGetState(type, state, out var miniGameState))
         {
             await this._player.Connection.SendUpdateMiniGameStateAsync(miniGameState).ConfigureAwait(false);

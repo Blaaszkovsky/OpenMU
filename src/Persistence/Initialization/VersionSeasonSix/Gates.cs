@@ -252,7 +252,9 @@ public class Gates : InitializerBase
         targetGates.Add(106, this.CreateExitGate(maps[30], 131, 92, 138, 94, 0, true));
         targetGates.Add(97, this.CreateExitGate(maps[30], 164, 198, 187, 209, 0));
         targetGates.Add(99, this.CreateExitGate(maps[30], 90, 236, 99, 239, 0));
-        targetGates.Add(103, this.CreateExitGate(maps[30], 29, 37, 30, 42, 0));
+
+        // The first two legacy landing tiles are blocked in Terrain31.att.
+        targetGates.Add(103, this.CreateExitGate(maps[30], 29, 39, 30, 42, 0));
         targetGates.Add(110, this.CreateExitGate(maps[30], 131, 92, 138, 94, 0));
         targetGates.Add(124, this.CreateExitGate(maps[30], 155, 37, 158, 43, 0));
 

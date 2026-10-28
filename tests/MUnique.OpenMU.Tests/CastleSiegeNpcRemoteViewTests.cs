@@ -16,6 +16,35 @@ using MUnique.OpenMU.Network.Packets.ServerToClient;
 public class CastleSiegeNpcRemoteViewTests
 {
     /// <summary>
+    /// Verifies canonical gate-state bytes after reusing output memory filled with unrelated data.
+    /// </summary>
+    /// <param name="isOpen">Whether the gate is open.</param>
+    /// <param name="operationResponse">Whether to send the operation result instead of a state notification.</param>
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    [TestCase(true, true)]
+    public async ValueTask SerializeGateBooleansFromDirtyBufferAsync(bool isOpen, bool operationResponse)
+    {
+        var (player, output) = CastleSiegeRemoteViewTestHelper.CreatePlayer();
+        player.Connection!.Output.GetSpan(8).Fill(0xFE);
+        var view = new CastleSiegeNpcOperationResultPlugIn(player);
+        if (operationResponse)
+        {
+            await view.ShowGateOperationResultAsync(CastleSiegeNpcOperationResult.Success, isOpen, 0x1234).ConfigureAwait(false);
+        }
+        else
+        {
+            await view.ShowGateStateAsync(isOpen, 0x1234).ConfigureAwait(false);
+        }
+
+        var expected = operationResponse
+            ? new byte[] { 0xC1, 8, 0xB2, 0x12, (byte)CastleSiegeNpcOperationResult.Success, isOpen ? (byte)1 : (byte)0, 0x12, 0x34 }
+            : new byte[] { 0xC1, 7, 0xB2, 0x13, isOpen ? (byte)1 : (byte)0, 0x12, 0x34 };
+        Assert.That(output.ToArray(), Is.EqualTo(expected));
+    }
+
+    /// <summary>
     /// Verifies NPC list and defense-structure operation response packets.
     /// </summary>
     [Test]

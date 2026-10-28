@@ -55,10 +55,25 @@ public class ShowMiniGameEnterResultViewPlugIn : IShowMiniGameEnterResultPlugIn
             case MiniGameType.Kanturu:
                 await this._player.Connection.SendKanturuEnterResultAsync(enterResult.ToKanturuEnterResult()).ConfigureAwait(false);
                 break;
+            case MiniGameType.IllusionTemple:
+                await this._player.Connection.SendIllusionTempleEnterResultAsync(ToIllusionTempleResult(enterResult)).ConfigureAwait(false);
+                break;
             case MiniGameType.Undefined:
                 throw new ArgumentException("undefined game type", nameof(miniGameType));
             default:
                 throw new ArgumentOutOfRangeException(nameof(miniGameType), miniGameType, null);
         }
+    }
+
+    private static byte ToIllusionTempleResult(EnterResult result)
+    {
+        return result switch
+        {
+            EnterResult.Success => 0,
+            EnterResult.NotOpen => 1,
+            EnterResult.Full => 4,
+            EnterResult.PlayerKillerCantEnter => 7,
+            _ => 3,
+        };
     }
 }

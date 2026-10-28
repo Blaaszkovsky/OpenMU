@@ -11,9 +11,12 @@ using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.DataModel.Entities;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Attributes;
+using MUnique.OpenMU.Interfaces;
 using MUnique.OpenMU.Persistence.EntityFramework;
+using MUnique.OpenMU.Persistence.EntityFramework.Json;
 using MUnique.OpenMU.Persistence.Initialization.Updates;
 using MUnique.OpenMU.Persistence.InMemory;
+using MUnique.OpenMU.PlugIns;
 
 /// <summary>
 /// The main program class.
@@ -39,6 +42,9 @@ internal class TestInitializationWithEfCore
     [Ignore("This is not a real test which should run automatically.")]
     public async Task SetupDatabaseAndTestLoadingDataAsync()
     {
+        JsonConverterRegistry.RegisterConverter(new LocalizedStringJsonConverter());
+        JsonConverterRegistry.RegisterConverter(new BinaryAsHexJsonConverter());
+
         var manager = new PersistenceContextProvider(new NullLoggerFactory(), null);
         using var update = await manager.ReCreateDatabaseAsync().ConfigureAwait(false);
         await this.TestDataInitializationAsync(new PersistenceContextProvider(new NullLoggerFactory(), null)).ConfigureAwait(false);
@@ -400,6 +406,8 @@ internal class TestInitializationWithEfCore
         Assert.That(await context.DeleteAsync(existingData).ConfigureAwait(false), Is.True);
 
         var update = new AddCastleSiegeDataUpdatePlugIn();
+        // A missing configuration models the old installation, rather than an owner deletion after version2.
+        (await context.GetAsync<ConfigurationUpdate>().ConfigureAwait(false)).Single(entry => entry.Key == update.Key).Version = 1;
         await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
         await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
 
@@ -412,6 +420,8 @@ internal class TestInitializationWithEfCore
         configuration.SignOfLordItemLevel = 0;
         signOfLord.MaximumItemLevel = 0;
 
+        // Reproduce the pre-version2 registration configuration which this assertion upgrades.
+        (await context.GetAsync<ConfigurationUpdate>().ConfigureAwait(false)).Single(entry => entry.Key == update.Key).Version = 1;
         await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
         await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
 
@@ -435,6 +445,8 @@ internal class TestInitializationWithEfCore
         gameConfiguration.Items.Remove(signOfLord);
         configuration.SignOfLordItemDefinition = null;
         configuration.SignOfLordItemLevel = 0;
+        // Each independent legacy repair starts before version 2, which installed these values.
+        (await context.GetAsync<ConfigurationUpdate>().ConfigureAwait(false)).Single(entry => entry.Key == update.Key).Version = 1;
         await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
         Assert.Multiple(() =>
         {
@@ -449,6 +461,7 @@ internal class TestInitializationWithEfCore
             gameConfiguration.MagicEffects.Remove(participantEffect);
         }
 
+        (await context.GetAsync<ConfigurationUpdate>().ConfigureAwait(false)).Single(entry => entry.Key == update.Key).Version = 1;
         await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
         await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
         Assert.That(
@@ -460,6 +473,7 @@ internal class TestInitializationWithEfCore
         var senior = gameConfiguration.Monsters.Single(monster => monster.Number == 223);
         Assert.That(senior.NpcWindow, Is.EqualTo(NpcWindow.CastleSeniorNPC));
         senior.NpcWindow = NpcWindow.Undefined;
+        (await context.GetAsync<ConfigurationUpdate>().ConfigureAwait(false)).Single(entry => entry.Key == update.Key).Version = 1;
         await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
         await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
         Assert.That(senior.NpcWindow, Is.EqualTo(NpcWindow.CastleSeniorNPC));
@@ -469,6 +483,7 @@ internal class TestInitializationWithEfCore
         maximumHealth.Value = 12_345;
         var defense = lifeStone.Attributes.Single(attribute => attribute.AttributeDefinition?.Id == Stats.DefenseBase.Id);
         lifeStone.Attributes.Remove(defense);
+        (await context.GetAsync<ConfigurationUpdate>().ConfigureAwait(false)).Single(entry => entry.Key == update.Key).Version = 1;
         await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
         await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
         Assert.Multiple(() =>

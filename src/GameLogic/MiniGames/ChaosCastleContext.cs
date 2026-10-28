@@ -56,6 +56,7 @@ public sealed class ChaosCastleContext : MiniGameContext
     private readonly IMapInitializer _mapInitializer;
     private readonly ConcurrentDictionary<string, PlayerGameState> _gameStates = new();
     private readonly ConcurrentDictionary<Monster, byte> _monsters = new();
+    private readonly List<Task> _monsterDeathEffects = new();
 
     private IReadOnlyCollection<(string Name, int Score, int BonusExp, int BonusMoney)>? _highScoreTable;
     private TimeSpan _remainingTime;
@@ -200,11 +201,20 @@ public sealed class ChaosCastleContext : MiniGameContext
     /// <inheritdoc />
     protected override async ValueTask GameEndedAsync(ICollection<Player> finishers)
     {
+        Task[] deathEffects;
+        lock (this._monsterDeathEffects)
+        {
+            deathEffects = this._monsterDeathEffects.ToArray();
+        }
+
+        await Task.WhenAll(deathEffects).ConfigureAwait(false);
+        await this.WaitForPendingChangeEventsAsync().ConfigureAwait(false);
         this.Logger.LogDebug("Game ended... Event: {0}, game id {1}", this.Definition.Name, (this._gameContext as IGameServerContext)?.Id ?? 0);
         this._currentCastleStatus = ChaosCastleStatus.Ended;
         await this.UpdateStateForAllAsync().ConfigureAwait(false);
 
         var sortedFinishers = finishers
+            .Where(player => player.IsAlive && player.CurrentMap == this.Map)
             .Select(this.GetGameStateOfFinisher)
             .WhereNotNull()
             .OrderByDescending(state => state.Score)
@@ -240,8 +250,8 @@ public sealed class ChaosCastleContext : MiniGameContext
             && this._gameStates.TryGetValue(player.Name, out var state))
         {
             var isWinner = this._winner == player;
-            var (name, _, bonusExp, _) = table.First(t => t.Name == player.Name);
-            await player.InvokeViewPlugInAsync<IChaosCastleScoreTableViewPlugin>(p => p.ShowScoreTableAsync(isWinner, name, state.MonsterKillCount, state.PlayerKillCount, bonusExp)).ConfigureAwait(false);
+            var bonusExp = table.FirstOrDefault(t => t.Name == player.Name).BonusExp;
+            await player.InvokeViewPlugInAsync<IChaosCastleScoreTableViewPlugin>(p => p.ShowScoreTableAsync(isWinner, player.Name, state.MonsterKillCount, state.PlayerKillCount, bonusExp)).ConfigureAwait(false);
         }
     }
 
@@ -262,9 +272,14 @@ public sealed class ChaosCastleContext : MiniGameContext
     protected override async void OnMonsterDied(object? sender, DeathInformation e)
 #pragma warning restore VSTHRD100 // Avoid async void methods
     {
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (this._monsterDeathEffects)
+        {
+            this._monsterDeathEffects.Add(completed.Task);
+        }
+
         try
         {
-            Interlocked.Decrement(ref this._aliveMonstersCount);
             base.OnMonsterDied(sender, e);
             if (sender is not Monster monster)
             {
@@ -294,6 +309,12 @@ public sealed class ChaosCastleContext : MiniGameContext
         catch (Exception ex)
         {
             this.Logger.LogError(ex, "Unexpected Error when handling a monster death.");
+        }
+        finally
+        {
+            // A final explosion can eliminate the apparent survivor before winner selection.
+            Interlocked.Decrement(ref this._aliveMonstersCount);
+            completed.TrySetResult();
         }
     }
 
@@ -517,13 +538,17 @@ public sealed class ChaosCastleContext : MiniGameContext
         {
             var spawnArea = spawnAreas[i];
 
+            Interlocked.Increment(ref this._aliveMonstersCount);
             if (await this._mapInitializer.InitializeSpawnAsync(i, this.Map, spawnArea, this, this.DropGenerator).ConfigureAwait(false) is Monster monster)
             {
                 this._monsters.TryAdd(monster, default);
             }
+            else
+            {
+                Interlocked.Decrement(ref this._aliveMonstersCount);
+            }
         }
 
-        this._aliveMonstersCount = requiredMonsters;
         this.Logger.LogDebug("Monsters created.");
     }
 

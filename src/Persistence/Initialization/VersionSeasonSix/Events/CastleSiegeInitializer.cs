@@ -6,9 +6,11 @@ namespace MUnique.OpenMU.Persistence.Initialization.VersionSeasonSix.Events;
 
 using MUnique.OpenMU.AttributeSystem;
 using MUnique.OpenMU.DataModel.Configuration;
+using MUnique.OpenMU.DataModel.Configuration.Items;
 using MUnique.OpenMU.DataModel.Entities;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.Interfaces;
+using MUnique.OpenMU.Persistence.Initialization.Updates;
 using MUnique.OpenMU.Persistence.Initialization.VersionSeasonSix.Maps;
 
 /// <summary>
@@ -52,6 +54,7 @@ internal sealed class CastleSiegeInitializer : InitializerBase
         if (this.GameConfiguration.CastleSiegeConfiguration is { } existingConfiguration)
         {
             this.InitializeRegistration(existingConfiguration);
+            this.InitializeSignOfLordDropGroup(existingConfiguration);
             return existingConfiguration;
         }
 
@@ -61,6 +64,7 @@ internal sealed class CastleSiegeInitializer : InitializerBase
         configuration.RegisterMinLevel = 200;
         configuration.RegisterMinMembers = 20;
         this.InitializeRegistration(configuration);
+        this.InitializeSignOfLordDropGroup(configuration);
         configuration.ParticipantRewardMinSeconds = 60;
         configuration.MaxAttackingGuilds = 3;
         configuration.GuildScoreCastleSiege = 0;
@@ -105,6 +109,44 @@ internal sealed class CastleSiegeInitializer : InitializerBase
         itemDefinition.MaximumItemLevel = Math.Max(itemDefinition.MaximumItemLevel, SignOfLordItemLevel);
         configuration.SignOfLordItemDefinition = itemDefinition;
         configuration.SignOfLordItemLevel = SignOfLordItemLevel;
+    }
+
+    /// <summary>
+    /// Adds the missing Sign of Lord source and repairs only the recognized historical Rena map layout.
+    /// </summary>
+    /// <param name="configuration">The existing registration configuration.</param>
+    internal void InitializeSignOfLordDropGroup(CastleSiegeConfiguration configuration)
+    {
+        this.RepairSeededRenaDevilSquareBindings();
+        var item = configuration.SignOfLordItemDefinition;
+        if (item is null
+            || item.GetId() != GuidHelper.CreateGuid<ItemDefinition>(SignOfLordItemGroup, SignOfLordItemNumber)
+            || configuration.SignOfLordItemLevel != SignOfLordItemLevel
+            || item.MaximumItemLevel < SignOfLordItemLevel)
+        {
+            return;
+        }
+
+        var groupId = GuidHelper.CreateGuid<DropItemGroup>(SignOfLordItemGroup, SignOfLordItemNumber, SignOfLordItemLevel);
+        if (this.GameConfiguration.DropItemGroups.Any(group => group.GetId() == groupId
+            || (group is not ItemDropItemGroup && group.ItemLevel == SignOfLordItemLevel && group.PossibleItems.Contains(item))))
+        {
+            return;
+        }
+
+        var group = this.Context.CreateNew<DropItemGroup>();
+        group.SetGuid(groupId);
+        group.Description = LocalizedString.FromResource(() => DropGroupDescriptions.SignOfLord);
+        group.Chance = 0.01; // Explicit fork default weight, alongside the unchanged plain Rena source.
+        group.ItemLevel = SignOfLordItemLevel;
+        group.MinimumMonsterLevel = 30;
+        group.MaximumMonsterLevel = 255;
+        group.PossibleItems.Add(item);
+        this.GameConfiguration.DropItemGroups.Add(group);
+        foreach (var map in AddRenaItemUpdatePlugIn.GetDefaultEventMaps(this.GameConfiguration))
+        {
+            map.DropItemGroups.Add(group);
+        }
     }
 
     /// <summary>
@@ -195,6 +237,48 @@ internal sealed class CastleSiegeInitializer : InitializerBase
         }
 
         return data;
+    }
+
+    private void RepairSeededRenaDevilSquareBindings()
+    {
+        var groupId = GuidHelper.CreateGuid<DropItemGroup>(SignOfLordItemGroup, SignOfLordItemNumber);
+        var group = this.GameConfiguration.DropItemGroups.FirstOrDefault(candidate => candidate.GetId() == groupId);
+        if (group is null or ItemDropItemGroup
+            || group.Chance != 0.01
+            || group.MinimumMonsterLevel != 30
+            || group.MaximumMonsterLevel != 255
+            || group.ItemLevel is not null
+            || group.ItemType != SpecialItemType.None
+            || group.Monster is not null
+            || group.PossibleItems.Count != 1
+            || group.PossibleItems.Single().GetId() != GuidHelper.CreateGuid<ItemDefinition>(SignOfLordItemGroup, SignOfLordItemNumber)
+            || group.PossibleItems.Single().DropsFromMonsters
+            || this.GameConfiguration.Monsters.Any(monster => monster.DropItemGroups.Contains(group))
+            || this.GameConfiguration.DropItemGroups.Any(candidate => candidate.GetId() != groupId
+                && candidate.ItemLevel is null or 0
+                && candidate.PossibleItems.Any(item => item.Group == SignOfLordItemGroup && item.Number == SignOfLordItemNumber)))
+        {
+            return;
+        }
+
+        var bindings = this.GameConfiguration.Maps.Where(map => map.DropItemGroups.Contains(group)).ToArray();
+        if (bindings.Length != 8
+            || bindings.Any(map => map.Discriminator != 0)
+            || !bindings.Select(map => map.Number).ToHashSet().SetEquals(new short[] { 11, 12, 13, 14, 15, 16, 17, 52 }))
+        {
+            return;
+        }
+
+        var targets = this.GameConfiguration.Maps.Where(map => map.Number == 32 && map.Discriminator is >= 5 and <= 7).ToArray();
+        if (targets.Length != 3 || targets.Select(map => map.Discriminator).Distinct().Count() != 3)
+        {
+            return;
+        }
+
+        foreach (var map in targets)
+        {
+            map.DropItemGroups.Add(group);
+        }
     }
 
     private void InitializeStateSchedule(CastleSiegeConfiguration configuration)

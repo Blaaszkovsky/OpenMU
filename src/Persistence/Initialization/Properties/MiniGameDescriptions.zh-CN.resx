@@ -114,4 +114,6 @@
   <data name="EventDefinitionForDevilSquareEventLevel5" xml:space="preserve">
     <value>恶魔广场5的活动配置。</value>
   </data>
+  <data name="IllusionTempleEvent" xml:space="preserve"><value>将圣物送回己方仓库的团队战斗。</value></data>
+  <data name="IllusionTempleWinningTeamChaosReward" xml:space="preserve"><value>幻影寺院获胜队伍的玛雅之石奖励</value></data>
 </root>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="EventName" xml:space="preserve"><value>Illusion Temple</value></data>
+  <data name="EntranceOpened" xml:space="preserve"><value>Wejście do Illusion Temple jest otwarte. Zostanie zamknięte za {0} min.</value></data>
+  <data name="EntranceClosed" xml:space="preserve"><value>Wejście do Illusion Temple zostało zamknięte.</value></data>
+  <data name="StartName" xml:space="preserve"><value>Harmonogram Illusion Temple</value></data>
+  <data name="StartDescription" xml:space="preserve"><value>Uruchamia sześć wspólnych poziomów Illusion Temple sezonu szóstego.</value></data>
+  <data name="FeatureName" xml:space="preserve"><value>Rozgrywka Illusion Temple</value></data>
+  <data name="FeatureDescription" xml:space="preserve"><value>Obsługuje relikwię, odradzanie zespołów i interakcje z postaciami eventu.</value></data>
+</root>

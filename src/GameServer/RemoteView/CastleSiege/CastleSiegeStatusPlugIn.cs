@@ -6,6 +6,7 @@ namespace MUnique.OpenMU.GameServer.RemoteView.CastleSiege;
 
 using System.Runtime.InteropServices;
 using MUnique.OpenMU.GameLogic.Views.CastleSiege;
+using MUnique.OpenMU.Network;
 using MUnique.OpenMU.Network.Packets.ServerToClient;
 using MUnique.OpenMU.PlugIns;
 
@@ -35,6 +36,38 @@ public class CastleSiegeStatusPlugIn : ICastleSiegeStatusPlugIn
     /// </summary>
     /// <param name="player">The player.</param>
     public CastleSiegeStatusPlugIn(RemotePlayer player) => this._player = player;
+
+    /// <inheritdoc />
+    public ValueTask ShowRemainingTimeAsync(TimeSpan remainingTime)
+    {
+        // This packet carries whole minutes; ceiling keeps a running battle from showing zero prematurely.
+        var totalMinutes = (int)Math.Clamp(Math.Ceiling(remainingTime.TotalMinutes), 0, (byte.MaxValue * 60) + 59);
+        return this._player.Connection.SendCastleSiegeRemainingTimeAsync(
+            (byte)(totalMinutes / 60),
+            (byte)(totalMinutes % 60));
+    }
+
+    /// <inheritdoc />
+    public async ValueTask ShowBattleStateAsync(bool isStarted)
+    {
+        if (this._player.Connection is not { } connection)
+        {
+            return;
+        }
+
+        int WritePacket()
+        {
+            var length = CastleSiegeBattleStartEndRef.Length;
+            var span = connection.Output.GetSpan(length)[..length];
+            // The generated boolean setter changes one bit; the client reads the entire byte.
+            span.Clear();
+            var packet = new CastleSiegeBattleStartEndRef(span);
+            packet.IsStarted = isStarted;
+            return length;
+        }
+
+        await connection.SendAsync(WritePacket).ConfigureAwait(false);
+    }
 
     /// <inheritdoc />
     public ValueTask ShowStatusAsync(CastleSiegeStatus? status)

@@ -32,6 +32,11 @@ public abstract class BaseItemCraftingHandler : IItemCraftingHandler
             return (error, null);
         }
 
+        if (this.ValidateMix(player, items, socketSlot) is { } validationError)
+        {
+            return (validationError, null);
+        }
+
         player.Logger.LogInformation("Crafting success chance: {successRate} %", successRate);
 
         var price = this.GetPrice(successRate, items);
@@ -76,6 +81,15 @@ public abstract class BaseItemCraftingHandler : IItemCraftingHandler
 
     /// <inheritdoc/>
     public abstract CraftingResult? TryGetRequiredItems(Player player, out IList<CraftingRequiredItemLink> items, out byte successRateByItems);
+
+    /// <summary>
+    /// Validates additional mix parameters after required items are known but before any money or item changes.
+    /// </summary>
+    /// <param name="player">The mixing player.</param>
+    /// <param name="requiredItems">The required items.</param>
+    /// <param name="socketSlot">The socket slot.</param>
+    /// <returns><c>null</c>, if the mix parameters are valid; otherwise, the corresponding crafting error.</returns>
+    protected virtual CraftingResult? ValidateMix(Player player, IList<CraftingRequiredItemLink> requiredItems, byte socketSlot) => null;
 
     /// <summary>
     /// Gets the price based on the success rate and the required items.

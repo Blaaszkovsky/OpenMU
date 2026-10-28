@@ -237,4 +237,7 @@
   <data name="BaskiWingsOfUnity" xml:space="preserve">
     <value>Baski: experimentelle Flügel der Einheit</value>
   </data>
+  <data name="SignOfLord" xml:space="preserve">
+    <value>Zeichen des Herrschers (+3)</value>
+  </data>
 </root>

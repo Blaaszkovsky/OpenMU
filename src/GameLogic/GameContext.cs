@@ -412,14 +412,14 @@ public class GameContext : AsyncDisposable, IGameContext
 
                 return PlayerMessage.ResourceManager.GetString(messageKey, cultureInfo) ?? string.Empty;
             },
-            (player, message) => player.InvokeViewPlugInAsync<IShowMessagePlugIn>(p => p.ShowMessageAsync(message, messageType)).AsTask())
+            (player, message) => player.ShowWorldMessageAsync(message, messageType).AsTask())
             .ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
     public async ValueTask SendGlobalMessageAsync(string message, MessageType messageType)
     {
-        await this.ForEachPlayerAsync(player => player.InvokeViewPlugInAsync<IShowMessagePlugIn>(p => p.ShowMessageAsync(message, messageType)).AsTask()).ConfigureAwait(false);
+        await this.ForEachPlayerAsync(player => player.ShowWorldMessageAsync(message, messageType).AsTask()).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -444,7 +444,7 @@ public class GameContext : AsyncDisposable, IGameContext
                 var text = message.GetTranslation(cultureInfo) ?? string.Empty;
                 return formatArguments.Length > 0 ? string.Format(cultureInfo, text, formatArguments) : text;
             },
-            (player, text) => player.InvokeViewPlugInAsync<IShowMessagePlugIn>(p => p.ShowMessageAsync(text, MessageType.GoldenCenter)).AsTask())
+            (player, text) => player.ShowWorldMessageAsync(text, MessageType.GoldenCenter).AsTask())
             .ConfigureAwait(false);
     }
 

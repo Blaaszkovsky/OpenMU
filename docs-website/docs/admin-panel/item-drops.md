@@ -146,6 +146,10 @@ map drop groups, a group has:
 | Required character level | The minimum level of the character who drops the box. If the character is below the required level of any of the matching groups, the box can't be dropped at all. |
 | Drop effect | The effect which is shown in the game client, e.g. fireworks |
 
+If a box has drop tables but none matches its level, opening is rejected and the
+box stays in the inventory. Add a table for that source item level before trying
+again.
+
 ![Item box drops](/img/admin-panel/item-box-drops.png)
 
 To add drops to an item which has none yet, select it at the bottom of the

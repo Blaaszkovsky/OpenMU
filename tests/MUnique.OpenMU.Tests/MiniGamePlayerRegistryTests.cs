@@ -76,6 +76,62 @@ public class MiniGamePlayerRegistryTests
     }
 
     /// <summary>
+    /// Tests that entering the same player twice isn't reported as a second successful admission.
+    /// </summary>
+    [Test]
+    public async Task EnteringSamePlayerTwiceIsRejectedAsync()
+    {
+        var registry = new MiniGamePlayerRegistry(new MiniGameDefinition { MaximumPlayerCount = 2 });
+        var player = CreatePlayer();
+
+        Assert.That(await registry.TryEnterAsync(player, _ => ValueTask.FromResult(true)).ConfigureAwait(false), Is.EqualTo(EnterResult.Success));
+        var duplicateResult = await registry.TryEnterAsync(player, _ => ValueTask.FromResult(true)).ConfigureAwait(false);
+
+        Assert.That(duplicateResult, Is.EqualTo(EnterResult.Failed));
+        Assert.That(await registry.GetSnapshotAsync().ConfigureAwait(false), Has.Count.EqualTo(1));
+    }
+
+    /// <summary>
+    /// Tests that concurrent entrants cannot exceed the ten-player Blood Castle and Devil Square limit.
+    /// </summary>
+    [Test]
+    public async Task ConcurrentEntrantsCannotExceedTenPlayerLimitAsync()
+    {
+        var registry = new MiniGamePlayerRegistry(new MiniGameDefinition { MaximumPlayerCount = 10 });
+        for (var i = 0; i < 9; i++)
+        {
+            Assert.That(await registry.TryEnterAsync(CreatePlayer(), _ => ValueTask.FromResult(true)).ConfigureAwait(false), Is.EqualTo(EnterResult.Success));
+        }
+
+        var firstValidationStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstValidation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstEntry = registry.TryEnterAsync(CreatePlayer(), async _ =>
+        {
+            firstValidationStarted.SetResult(true);
+            await releaseFirstValidation.Task.ConfigureAwait(false);
+            return true;
+        }).AsTask();
+        await firstValidationStarted.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        var secondEntry = registry.TryEnterAsync(CreatePlayer(), _ => ValueTask.FromResult(true)).AsTask();
+        try
+        {
+            Assert.That(firstEntry.IsCompleted, Is.False);
+            Assert.That(secondEntry.IsCompleted, Is.False, "The second entrant must wait while the final slot is being validated.");
+        }
+        finally
+        {
+            releaseFirstValidation.TrySetResult(true);
+        }
+
+        var results = await Task.WhenAll(firstEntry, secondEntry).WaitAsync(TimeSpan.FromSeconds(5))
+            .ConfigureAwait(false);
+
+        Assert.That(results.Count(result => result == EnterResult.Success), Is.EqualTo(1));
+        Assert.That(results.Count(result => result == EnterResult.Full), Is.EqualTo(1));
+        Assert.That(await registry.GetSnapshotAsync().ConfigureAwait(false), Has.Count.EqualTo(10));
+    }
+
+    /// <summary>
     /// Tests that entering while the game runs is rejected by default.
     /// </summary>
     [Test]

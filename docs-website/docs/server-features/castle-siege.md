@@ -27,3 +27,14 @@ position (`B6`), NPC position (`BB`), and guild command (`B2:1D`) packets. Withi
 each update, the player packet replaces the position layer and the NPC packet
 adds structures afterward. The commander position is already known locally;
 the existing position packet has no separate commander-identity field.
+
+When a character enters the world on the Castle Siege map during a battle,
+participating attackers and defenders start in their side's configured respawn
+area. A character without a participating side starts in the outer attacking
+area without receiving a siege side. This also applies when reconnecting, or
+when the battle begins while the character is loading. Ordinary movement and
+siege portals keep their existing rules.
+
+The Lorencia entrance uses walkable landing tiles. Existing Season 6 databases
+receive this correction through version 4 of the Castle Siege data update;
+customized landing rectangles are preserved.

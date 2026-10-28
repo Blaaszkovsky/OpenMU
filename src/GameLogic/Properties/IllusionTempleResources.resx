@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="EventName" xml:space="preserve"><value>Illusion Temple</value></data>
+  <data name="EntranceOpened" xml:space="preserve"><value>Illusion Temple entrance is open and closes in {0} minute(s).</value></data>
+  <data name="EntranceClosed" xml:space="preserve"><value>Illusion Temple entrance closed.</value></data>
+  <data name="StartName" xml:space="preserve"><value>Illusion Temple schedule</value></data>
+  <data name="StartDescription" xml:space="preserve"><value>Starts the six shared Season Six Illusion Temple levels.</value></data>
+  <data name="FeatureName" xml:space="preserve"><value>Illusion Temple match</value></data>
+  <data name="FeatureDescription" xml:space="preserve"><value>Handles the relic, team respawn, and event NPC interactions.</value></data>
+</root>

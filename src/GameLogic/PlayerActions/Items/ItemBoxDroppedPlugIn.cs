@@ -22,13 +22,19 @@ public sealed class ItemBoxDroppedPlugIn : IItemDropPlugIn
     /// <inheritdoc />
     public async ValueTask HandleItemDropAsync(Player player, Item sourceItem, Point target, ItemDropArguments cancelArgs)
     {
-        if (sourceItem.Definition!.DropItems.Count <= 0
-            || sourceItem.Definition!.DropItems.Where(di => di.SourceItemLevel == sourceItem.Level) is not { } itemDropGroups)
+        if (sourceItem.Definition!.DropItems.Count <= 0)
         {
             return;
         }
 
         cancelArgs.WasHandled = true;
+        var itemDropGroups = sourceItem.Definition.DropItems.Where(di => di.SourceItemLevel == sourceItem.Level).ToArray();
+        if (itemDropGroups.Length == 0)
+        {
+            cancelArgs.Success = false;
+            return;
+        }
+
         if (itemDropGroups.Any(g => g.RequiredCharacterLevel > player.Level))
         {
             cancelArgs.Success = false;

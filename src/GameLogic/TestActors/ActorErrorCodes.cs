@@ -61,6 +61,15 @@ public static class ActorErrorCodes
     /// <summary>No actor animates the given account.</summary>
     public static readonly string UnknownActor = "unknown_actor";
 
+    /// <summary>The actor is not in the fixed cohort allowed to enter the R12 Devil Square test.</summary>
+    public static readonly string NotAuthorized = "not_authorized";
+
+    /// <summary>The configured Devil Square is full.</summary>
+    public static readonly string MiniGameFull = "mini_game_full";
+
+    /// <summary>The ordinary mini-game entry action refused this actor.</summary>
+    public static readonly string MiniGameEntryRefused = "mini_game_entry_refused";
+
     /// <summary>This process does not host the requested game server.</summary>
     public static readonly string UnknownServer = "unknown_server";
 

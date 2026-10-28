@@ -4,6 +4,8 @@
 
 namespace MUnique.OpenMU.Tests;
 
+using System.Collections.Immutable;
+using System.IO;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using MUnique.OpenMU.DataModel.Configuration;
@@ -11,6 +13,8 @@ using MUnique.OpenMU.DataModel.Entities;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameLogic.CastleSiege;
+using MUnique.OpenMU.GameLogic.CastleSiege.Actions;
+using MUnique.OpenMU.GameLogic.CastleSiege.Intelligence;
 using MUnique.OpenMU.GameLogic.CastleSiege.NPC;
 using MUnique.OpenMU.GameLogic.Views.CastleSiege;
 using MUnique.OpenMU.GameServer;
@@ -28,6 +32,459 @@ public class CastleSiegeCrownMechanicsTests
 {
     private const uint DefenseGuildId = 10;
     private const uint AttackGuildId = 20;
+
+    /// <summary>
+    /// Verifies Crown operation from the nearest walkable tile outside the Season 6 Crown footprint.
+    /// </summary>
+    /// <param name="distance">The master's distance from the Crown.</param>
+    /// <param name="canOperate">Whether the position is within operating range.</param>
+    [TestCase(2, true)]
+    [TestCase(3, false)]
+    public async ValueTask CrownOperationRespectsClientFootprintAndRangeAsync(byte distance, bool canOperate)
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        fixture.Configuration.CrownHoldTimeSeconds = 30;
+        var players = new List<Player>();
+        try
+        {
+            await fixture.Context.NpcController.PrepareAsync().ConfigureAwait(false);
+            var npcs = fixture.Context.NpcController.GetRuntimeSnapshot().Select(runtime => runtime.SpawnedInstance).ToList();
+            var crown = npcs.OfType<CastleSiegeCrown>().Single();
+            var switches = npcs.OfType<CastleSiegeSwitch>().OrderBy(siegeSwitch => siegeSwitch.SwitchIndex).ToList();
+
+            // EncTerrain312.att at Crown176/212 blocks these relative tiles; the nearest approach is two tiles away.
+            for (var y = -1; y <= 1; y++)
+            {
+                var width = y == 0 ? 3 : 2;
+                for (var x = -width; x <= width; x++)
+                {
+                    fixture.SiegeMap.Terrain.ApplyTerrainAttribute((byte)(60 + x), (byte)(60 + y), TerrainAttributeType.Blocked, true);
+                }
+            }
+
+            var master = await fixture.CreatePlayerAsync(AttackGuildId, "CrownUser", CastleSiegeJoinSide.Attack1, 60, (byte)(60 - distance)).ConfigureAwait(false);
+            players.Add(master);
+            master.GuildStatus = new GuildMemberStatus(AttackGuildId, GuildPosition.GuildMaster);
+            players.Add(await fixture.CreatePlayerAsync(AttackGuildId, "SwitchOne", CastleSiegeJoinSide.Attack1, 70, 61).ConfigureAwait(false));
+            players.Add(await fixture.CreatePlayerAsync(AttackGuildId, "SwitchTwo", CastleSiegeJoinSide.Attack1, 80, 61).ConfigureAwait(false));
+            Assert.Multiple(() =>
+            {
+                Assert.That(fixture.SiegeMap.Terrain.WalkMap[60, 59], Is.False);
+                Assert.That(fixture.SiegeMap.Terrain.WalkMap[60, 60 - distance], Is.True);
+            });
+
+            using var crownIntelligence = new CastleSiegeCrownIntelligence(fixture.Context) { Npc = crown };
+            using var firstSwitchIntelligence = new CastleSiegeSwitchIntelligence(fixture.Context) { Npc = switches[0] };
+            using var secondSwitchIntelligence = new CastleSiegeSwitchIntelligence(fixture.Context) { Npc = switches[1] };
+            await firstSwitchIntelligence.TickAsync().ConfigureAwait(false);
+            await secondSwitchIntelligence.TickAsync().ConfigureAwait(false);
+            await crownIntelligence.TickAsync().ConfigureAwait(false);
+            await CastleSiegeSwitchMechanics.SendSwitchInfoAsync(fixture.Context).ConfigureAwait(false);
+            Assert.That(fixture.Context.SwitchUsers, Is.EqualTo(players.Skip(1)));
+            Assert.That(fixture.Context.IsCrownAvailable, Is.True);
+            Assert.That(fixture.Context.CrownUser, canOperate ? Is.SameAs(master) : Is.Null);
+
+            for (var second = 1; second < 30; second++)
+            {
+                await fixture.CheckCrownAsync().ConfigureAwait(false);
+                Assert.That(fixture.Context.SiegeData.OwnerGuildId, Is.EqualTo(fixture.DefensePersistentGuildId), "The complete 30-second hold is required.");
+            }
+
+            await fixture.CheckCrownAsync().ConfigureAwait(false);
+            Assert.That(fixture.Context.SiegeData.OwnerGuildId, Is.EqualTo(canOperate ? fixture.AttackPersistentGuildId : fixture.DefensePersistentGuildId));
+        }
+        finally
+        {
+            foreach (var player in players)
+            {
+                await fixture.GameServerContext.RemovePlayerAsync(player).ConfigureAwait(false);
+            }
+
+            await fixture.Context.NpcController.DespawnAllAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verifies that battle transitions switch the terrain of players already on the siege map.
+    /// </summary>
+    [Test]
+    public async ValueTask BattleTransitionsSynchronizeClientBattleModeAsync()
+    {
+        var clock = new ManualTimeProvider(new DateTimeOffset(2026, 8, 3, 12, 0, 0, TimeSpan.Zero));
+        var plugIn = new CastleSiegePlugIn(clock);
+        var fixture = await CreateFixtureAsync(plugIn).ConfigureAwait(false);
+        plugIn.ForceState(CastleSiegeState.RegisterGuild);
+        await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+        var player = await fixture.CreatePlayerAsync(AttackGuildId, "Attacker", CastleSiegeJoinSide.None, 60, 60, plugIn).ConfigureAwait(false);
+        player.GuildStatus = new GuildMemberStatus(AttackGuildId, GuildPosition.GuildMaster);
+        player.Attributes![Stats.Level] = 400;
+        await new CastleSiegeRegisterGuildAction().RegisterAsync(player, fixture.Context).ConfigureAwait(false);
+        Assert.That(fixture.Context.RegisteredGuilds, Contains.Key(fixture.AttackPersistentGuildId));
+        var view = Mock.Get(player.ViewPlugIns.GetPlugIn<ICastleSiegeStatusPlugIn>()!);
+        try
+        {
+            view.Invocations.Clear();
+            plugIn.ForceState(CastleSiegeState.Ready);
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            view.Verify(p => p.ShowBattleStateAsync(false), Times.AtLeastOnce);
+
+            view.Invocations.Clear();
+            plugIn.ForceStart();
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            Assert.That(fixture.Context.CurrentState, Is.EqualTo(CastleSiegeState.Start));
+            view.Verify(p => p.ShowBattleStateAsync(true), Times.AtLeastOnce);
+            view.Verify(p => p.ShowBattleStateAsync(false), Times.Never);
+
+            view.Invocations.Clear();
+            plugIn.ForceState(CastleSiegeState.End);
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            view.Verify(p => p.ShowBattleStateAsync(false), Times.Once);
+            view.Invocations.Clear();
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            view.Verify(p => p.ShowBattleStateAsync(It.IsAny<bool>()), Times.Never);
+        }
+        finally
+        {
+            await player.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verifies battle mode synchronization on map entry and after the client's map-ready handshake.
+    /// </summary>
+    /// <param name="state">The current server siege state.</param>
+    /// <param name="isStarted">The battle mode the client must receive.</param>
+    [TestCase(CastleSiegeState.Ready, false)]
+    [TestCase(CastleSiegeState.Start, true)]
+    [TestCase(CastleSiegeState.End, false)]
+    public async ValueTask EnteringAndRejoiningSiegeMapSynchronizesBattleModeAsync(CastleSiegeState state, bool isStarted)
+    {
+        var clock = new ManualTimeProvider(new DateTimeOffset(2026, 8, 3, 12, 0, 0, TimeSpan.Zero));
+        var plugIn = new CastleSiegePlugIn(clock);
+        var fixture = await CreateFixtureAsync(plugIn).ConfigureAwait(false);
+        plugIn.ForceState(state);
+        await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+        var player = await fixture.CreatePlayerAsync(AttackGuildId, "LateJoin", CastleSiegeJoinSide.None, 60, 60, plugIn).ConfigureAwait(false);
+        var view = Mock.Get(player.ViewPlugIns.GetPlugIn<ICastleSiegeStatusPlugIn>()!);
+        try
+        {
+            view.Verify(p => p.ShowBattleStateAsync(isStarted), Times.AtLeastOnce);
+            view.Verify(p => p.ShowBattleStateAsync(!isStarted), Times.Never);
+
+            view.Invocations.Clear();
+            await plugIn.PlayerStateChangedAsync(player, PlayerState.ChangingMap, PlayerState.EnteredWorld).ConfigureAwait(false);
+            view.Verify(p => p.ShowBattleStateAsync(isStarted), Times.Once);
+
+            await player.WarpToAsync(new ExitGate
+            {
+                Map = fixture.GameServerContext.Configuration.Maps.Single(map => map.Number == 0),
+                X1 = 10,
+                X2 = 10,
+                Y1 = 10,
+                Y2 = 10,
+                Direction = Direction.South,
+            }).ConfigureAwait(false);
+            await player.ClientReadyAfterMapChangeAsync().ConfigureAwait(false);
+            view.Invocations.Clear();
+            await plugIn.ObjectAddedToMapAsync(player.CurrentMap!, player).ConfigureAwait(false);
+            await plugIn.PlayerStateChangedAsync(player, PlayerState.ChangingMap, PlayerState.EnteredWorld).ConfigureAwait(false);
+            view.Verify(p => p.ShowBattleStateAsync(It.IsAny<bool>()), Times.Never);
+        }
+        finally
+        {
+            await player.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verifies the battle timer starts after battle mode and follows the context clock on every battle tick.
+    /// </summary>
+    [Test]
+    public async ValueTask BattleTimerFollowsTransitionsAndClockAsync()
+    {
+        var clock = new ManualTimeProvider(new DateTimeOffset(2026, 8, 3, 12, 0, 0, TimeSpan.Zero));
+        var plugIn = new CastleSiegePlugIn(clock);
+        var fixture = await CreateFixtureAsync(plugIn).ConfigureAwait(false);
+        var player = await fixture.CreatePlayerAsync(AttackGuildId, "TimerUser", CastleSiegeJoinSide.None, 60, 60, plugIn).ConfigureAwait(false);
+        var view = Mock.Get(player.ViewPlugIns.GetPlugIn<ICastleSiegeStatusPlugIn>()!);
+        try
+        {
+            view.Invocations.Clear();
+            plugIn.ForceStart();
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            var initialRemaining = fixture.Context.RemainingTime;
+            Assert.That(initialRemaining, Is.GreaterThan(TimeSpan.Zero));
+            view.Verify(p => p.ShowRemainingTimeAsync(initialRemaining), Times.AtLeastOnce);
+            var calls = view.Invocations.ToList();
+            Assert.That(calls.FindIndex(call => call.Method.Name == nameof(ICastleSiegeStatusPlugIn.ShowBattleStateAsync)),
+                Is.LessThan(calls.FindIndex(call => call.Method.Name == nameof(ICastleSiegeStatusPlugIn.ShowRemainingTimeAsync))), "Create battle UI before sending its timer.");
+
+            view.Invocations.Clear();
+            clock.Advance(TimeSpan.FromMinutes(1));
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            view.Verify(p => p.ShowRemainingTimeAsync(initialRemaining - TimeSpan.FromMinutes(1)), Times.Once);
+            view.Verify(p => p.ShowBattleStateAsync(It.IsAny<bool>()), Times.Never);
+
+            view.Invocations.Clear();
+            plugIn.ForceState(CastleSiegeState.End);
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            view.Verify(p => p.ShowRemainingTimeAsync(TimeSpan.Zero), Times.Once);
+            view.Invocations.Clear();
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            view.Verify(p => p.ShowRemainingTimeAsync(It.IsAny<TimeSpan>()), Times.Never);
+        }
+        finally
+        {
+            await player.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verifies that a pending HUD send cannot hold up the Crown tick, even when the send eventually fails.
+    /// </summary>
+    [Test]
+    public async ValueTask PendingBattleTimerDoesNotDelayCrownTickAsync()
+    {
+        var clock = new ManualTimeProvider(new DateTimeOffset(2026, 8, 3, 12, 0, 0, TimeSpan.Zero));
+        var plugIn = new CastleSiegePlugIn(clock);
+        var fixture = await CreateFixtureAsync(plugIn).ConfigureAwait(false);
+        var player = await fixture.CreatePlayerAsync(AttackGuildId, "SlowTimer", CastleSiegeJoinSide.None, 60, 60, plugIn).ConfigureAwait(false);
+        try
+        {
+            plugIn.ForceStart();
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var view = Mock.Get(player.ViewPlugIns.GetPlugIn<ICastleSiegeStatusPlugIn>()!);
+            view.Setup(p => p.ShowRemainingTimeAsync(It.IsAny<TimeSpan>())).Returns(() =>
+            {
+                entered.TrySetResult(true);
+                return new ValueTask(pending.Task);
+            });
+            clock.Advance(TimeSpan.FromSeconds(1));
+            var tick = plugIn.ExecuteTaskAsync(fixture.GameServerContext).AsTask();
+            try
+            {
+                await entered.Task.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+                Assert.That(fixture.Context.LastCrownUpdateUtc, Is.EqualTo(clock.GetUtcNow().UtcDateTime),
+                    "Crown logic must run before awaiting a cosmetic HUD send.");
+            }
+            finally
+            {
+                pending.TrySetException(new IOException("The pending HUD connection failed."));
+                await tick.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            await player.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verifies late entry, map-ready rejoining and the map/world audience boundary of the timer.
+    /// </summary>
+    /// <param name="state">The current siege phase.</param>
+    [TestCase(CastleSiegeState.Ready)]
+    [TestCase(CastleSiegeState.Start)]
+    [TestCase(CastleSiegeState.End)]
+    public async ValueTask BattleTimerSynchronizesEntryAndRejoinAsync(CastleSiegeState state)
+    {
+        var clock = new ManualTimeProvider(new DateTimeOffset(2026, 8, 3, 12, 0, 0, TimeSpan.Zero));
+        var plugIn = new CastleSiegePlugIn(clock);
+        var fixture = await CreateFixtureAsync(plugIn).ConfigureAwait(false);
+        plugIn.ForceState(state);
+        await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+        clock.Advance(TimeSpan.FromSeconds(40));
+        var player = await fixture.CreatePlayerAsync(AttackGuildId, "LateTimer", CastleSiegeJoinSide.None, 60, 60, plugIn).ConfigureAwait(false);
+        var view = Mock.Get(player.ViewPlugIns.GetPlugIn<ICastleSiegeStatusPlugIn>()!);
+        var expected = state == CastleSiegeState.Start ? fixture.Context.RemainingTime : TimeSpan.Zero;
+        try
+        {
+            view.Verify(p => p.ShowRemainingTimeAsync(expected), Times.AtLeastOnce);
+            view.Invocations.Clear();
+            await plugIn.PlayerStateChangedAsync(player, PlayerState.ChangingMap, PlayerState.EnteredWorld).ConfigureAwait(false);
+            view.Verify(p => p.ShowRemainingTimeAsync(expected), Times.Once);
+
+            await player.PlayerState.TryAdvanceToAsync(PlayerState.CharacterSelection).ConfigureAwait(false);
+            Assert.That(player.PlayerState.CurrentState, Is.SameAs(PlayerState.CharacterSelection));
+            Assert.That(player.SelectedCharacter, Is.Not.Null, "A stale selected character must not bypass the world-state guard.");
+            view.Invocations.Clear();
+            await plugIn.ObjectAddedToMapAsync(fixture.SiegeMap, player).ConfigureAwait(false);
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            view.Verify(p => p.ShowRemainingTimeAsync(It.IsAny<TimeSpan>()), Times.Never);
+
+            await player.PlayerState.TryAdvanceToAsync(PlayerState.EnteredWorld).ConfigureAwait(false);
+            await player.WarpToAsync(new ExitGate
+            {
+                Map = fixture.GameServerContext.Configuration.Maps.Single(map => map.Number == 0),
+                X1 = 10,
+                X2 = 10,
+                Y1 = 10,
+                Y2 = 10,
+                Direction = Direction.South,
+            }).ConfigureAwait(false);
+            await player.ClientReadyAfterMapChangeAsync().ConfigureAwait(false);
+            view.Invocations.Clear();
+            await plugIn.ObjectAddedToMapAsync(player.CurrentMap!, player).ConfigureAwait(false);
+            await plugIn.PlayerStateChangedAsync(player, PlayerState.ChangingMap, PlayerState.EnteredWorld).ConfigureAwait(false);
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            view.Verify(p => p.ShowRemainingTimeAsync(It.IsAny<TimeSpan>()), Times.Never);
+        }
+        finally
+        {
+            await player.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verifies registration, selection, proximity-based capture, final rewards and the next registration cycle.
+    /// </summary>
+    [Test]
+    public async ValueTask RegisteredGuildCapturesCrownAndCompletesServerCycleAsync()
+    {
+        var clock = new ManualTimeProvider(new DateTimeOffset(2026, 8, 3, 12, 0, 0, TimeSpan.Zero));
+        var plugIn = new CastleSiegePlugIn(clock);
+        var fixture = await CreateFixtureAsync(plugIn).ConfigureAwait(false);
+        var players = new List<Player>();
+        try
+        {
+            plugIn.ForceState(CastleSiegeState.RegisterGuild);
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            var crownUser = await fixture.CreatePlayerAsync(AttackGuildId, "CrownUser", CastleSiegeJoinSide.None, 60, 60, plugIn).ConfigureAwait(false);
+            players.Add(crownUser);
+            crownUser.GuildStatus = new GuildMemberStatus(AttackGuildId, GuildPosition.GuildMaster);
+            crownUser.Attributes![Stats.Level] = 400;
+            await new CastleSiegeRegisterGuildAction().RegisterAsync(crownUser, fixture.Context).ConfigureAwait(false);
+            Assert.That(fixture.Context.RegisteredGuilds, Contains.Key(fixture.AttackPersistentGuildId));
+
+            plugIn.ForceState(CastleSiegeState.RegisterMark);
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            var mark = crownUser.PersistenceContext.CreateNew<Item>();
+            mark.Definition = fixture.Configuration.SignOfLordItemDefinition;
+            mark.Level = fixture.Configuration.SignOfLordItemLevel;
+            await crownUser.Inventory!.AddItemAsync(20, mark).ConfigureAwait(false);
+            await new CastleSiegeRegisterMarkAction().RegisterMarkAsync(crownUser, fixture.Context, 20).ConfigureAwait(false);
+            Assert.Multiple(() =>
+            {
+                Assert.That(crownUser.Inventory.GetItem(20), Is.Null);
+                Assert.That(fixture.Context.RegisteredGuilds[fixture.AttackPersistentGuildId].Marks, Is.EqualTo(1));
+            });
+
+            plugIn.ForceState(CastleSiegeState.Notify);
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            Assert.Multiple(() =>
+            {
+                Assert.That(fixture.Context.FinalGuildList[AttackGuildId].Side, Is.EqualTo(CastleSiegeJoinSide.Attack1));
+                Assert.That(fixture.Context.FinalGuildList[DefenseGuildId].Side, Is.EqualTo(CastleSiegeJoinSide.Defense));
+            });
+
+            plugIn.ForceState(CastleSiegeState.Ready);
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            Assert.That(fixture.Context.NpcController.GetRuntimeSnapshot().Count(runtime => runtime.SpawnedInstance is not null), Is.EqualTo(3));
+            plugIn.ForceStart();
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            Assert.That(fixture.Context.CurrentState, Is.EqualTo(CastleSiegeState.Start));
+            fixture.Context.SiegeData.TaxChaos = 3;
+            fixture.Context.SiegeData.TributeMoney = 6_000;
+            await crownUser.WarpToAsync(new ExitGate
+            {
+                Map = fixture.Configuration.CastleSiegeMapDefinition,
+                X1 = 60,
+                X2 = 60,
+                Y1 = 60,
+                Y2 = 60,
+                Direction = Direction.South,
+            }).ConfigureAwait(false);
+            await crownUser.ClientReadyAfterMapChangeAsync().ConfigureAwait(false);
+            players.Add(await fixture.CreatePlayerAsync(AttackGuildId, "SwitchOne", CastleSiegeJoinSide.None, 70, 60, plugIn).ConfigureAwait(false));
+            players.Add(await fixture.CreatePlayerAsync(AttackGuildId, "SwitchTwo", CastleSiegeJoinSide.None, 80, 60, plugIn).ConfigureAwait(false));
+            var npcs = fixture.Context.NpcController.GetRuntimeSnapshot().Select(runtime => runtime.SpawnedInstance).ToList();
+            var crown = npcs.OfType<CastleSiegeCrown>().Single();
+            var switches = npcs.OfType<CastleSiegeSwitch>().OrderBy(siegeSwitch => siegeSwitch.SwitchIndex).ToList();
+            using var crownIntelligence = new CastleSiegeCrownIntelligence(fixture.Context) { Npc = crown };
+            using var firstSwitchIntelligence = new CastleSiegeSwitchIntelligence(fixture.Context) { Npc = switches[0] };
+            using var secondSwitchIntelligence = new CastleSiegeSwitchIntelligence(fixture.Context) { Npc = switches[1] };
+            await crownIntelligence.TickAsync().ConfigureAwait(false);
+            await firstSwitchIntelligence.TickAsync().ConfigureAwait(false);
+            await secondSwitchIntelligence.TickAsync().ConfigureAwait(false);
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            Assert.Multiple(() =>
+            {
+                Assert.That(fixture.Context.CrownUser, Is.SameAs(crownUser));
+                Assert.That(fixture.Context.SwitchUsers, Is.EqualTo(players.Skip(1)));
+                Assert.That(fixture.Context.IsCrownAvailable, Is.True);
+                Assert.That(crown.State, Is.EqualTo(CastleSiegeCrownState.Idle));
+            });
+
+            for (var tick = 0; tick < fixture.Configuration.CrownHoldTimeSeconds; tick++)
+            {
+                clock.Advance(TimeSpan.FromSeconds(1));
+                await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(fixture.Context.MiddleOwnerGuildId, Is.EqualTo(AttackGuildId));
+                Assert.That(fixture.Context.SiegeData.OwnerGuildId, Is.EqualTo(fixture.AttackPersistentGuildId));
+                Assert.That(fixture.Context.SiegeData.TaxChaos, Is.Zero);
+                Assert.That(fixture.Context.SiegeData.TributeMoney, Is.Zero);
+                Assert.That(fixture.Context.GetPlayerJoinSide(crownUser), Is.EqualTo(CastleSiegeJoinSide.Defense));
+                Assert.That(fixture.Context.CrownUser, Is.Null);
+                Assert.That(fixture.Context.SwitchUsers, Is.All.Null);
+            });
+            Mock.Get(crownUser.ViewPlugIns.GetPlugIn<ICastleSiegeCrownAccessStatePlugIn>()!)
+                .Verify(view => view.ShowCrownAccessStateAsync(CastleSiegeCrownAccessState.Success, TimeSpan.FromSeconds(3)), Times.Once);
+
+            clock.Advance(TimeSpan.FromSeconds(5));
+            plugIn.ForceState(CastleSiegeState.End);
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            Assert.That(fixture.Context.CurrentState, Is.EqualTo(CastleSiegeState.End));
+            Assert.That(fixture.Context.ParticipantTracking, Is.Empty);
+            foreach (var player in players)
+            {
+                Assert.That(player.Inventory!.Items.Count(item => item.Definition == fixture.Configuration.RewardItemDefinition), Is.EqualTo(1));
+            }
+
+            Mock.Get(fixture.GameServerContext.GuildServer)
+                .Verify(server => server.IncreaseGuildScoreAsync(AttackGuildId, 10), Times.Once);
+            using (var persistenceContext = fixture.PersistenceContextProvider.CreateNewTypedContext(typeof(CastleSiegeData), false, fixture.GameServerContext.Configuration))
+            {
+                var data = (await persistenceContext.GetAsync<CastleSiegeData>().ConfigureAwait(false)).Single();
+                Assert.That(data.OwnerGuildId, Is.EqualTo(fixture.AttackPersistentGuildId));
+                Assert.That(data.TaxChaos, Is.Zero);
+                Assert.That(data.TributeMoney, Is.Zero);
+                Assert.That(data.Guilds.Single(guild => guild.GuildId == fixture.AttackPersistentGuildId).Side, Is.EqualTo(CastleSiegeJoinSide.Defense));
+            }
+
+            plugIn.ForceState(CastleSiegeState.EndCycle);
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            Assert.Multiple(() =>
+            {
+                Assert.That(fixture.Context.CurrentState, Is.EqualTo(CastleSiegeState.RegisterGuild));
+                Assert.That(fixture.Context.RegisteredGuilds, Is.Empty);
+                Assert.That(fixture.Context.FinalGuildList, Is.Empty);
+                Assert.That(fixture.Context.PlayerJoinSides, Is.Empty);
+                Assert.That(fixture.Context.NpcController.GetRuntimeSnapshot(), Is.Empty);
+                Assert.That(fixture.Context.MiddleOwnerGuildId, Is.Null);
+            });
+            using var finalPersistenceContext = fixture.PersistenceContextProvider.CreateNewTypedContext(typeof(CastleSiegeData), false, fixture.GameServerContext.Configuration);
+            var finalData = (await finalPersistenceContext.GetAsync<CastleSiegeData>().ConfigureAwait(false)).Single();
+            Assert.That(finalData.OwnerGuildId, Is.EqualTo(fixture.AttackPersistentGuildId));
+            Assert.That(finalData.Guilds, Is.Empty);
+            Assert.That(await finalPersistenceContext.GetAsync<CastleSiegeGuildRegistration>().ConfigureAwait(false), Is.Empty);
+        }
+        finally
+        {
+            foreach (var player in players)
+            {
+                await fixture.GameServerContext.RemovePlayerAsync(player).ConfigureAwait(false);
+            }
+
+            await fixture.Context.NpcController.DespawnAllAsync().ConfigureAwait(false);
+        }
+    }
 
     /// <summary>
     /// Verifies that an interrupted attempt keeps capped progress and reports the failure once.
@@ -549,6 +1006,7 @@ public class CastleSiegeCrownMechanicsTests
     public async ValueTask FinalResultRetainsCurrentOwnerWithoutCaptureAsync()
     {
         var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        var observer = await fixture.CreatePlayerAsync(DefenseGuildId, "Observer", CastleSiegeJoinSide.Defense, 100, 100).ConfigureAwait(false);
         fixture.Context.MiddleOwnerGuildId = null;
         fixture.Context.SiegeData.TaxChaos = 3;
         fixture.Context.SiegeData.TaxStore = 2;
@@ -567,6 +1025,65 @@ public class CastleSiegeCrownMechanicsTests
             Assert.That(fixture.Context.SiegeData.TaxHunt, Is.EqualTo(100_000));
             Assert.That(fixture.Context.SiegeData.TributeMoney, Is.EqualTo(6_000));
         });
+
+        Mock.Get(observer.ViewPlugIns.GetPlugIn<ICastleSiegeOwnershipChangePlugIn>()!)
+            .Verify(plugIn => plugIn.ShowOwnershipChangeAsync("Defenders"), Times.Once);
+    }
+
+    /// <summary>
+    /// Verifies that an unoccupied siege without a capture does not announce an empty winner.
+    /// </summary>
+    [Test]
+    public async ValueTask FinalResultWithoutOwnerDoesNotAnnounceSuccessAsync()
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        var observer = await fixture.CreatePlayerAsync(AttackGuildId, "Observer", CastleSiegeJoinSide.None, 100, 100).ConfigureAwait(false);
+        fixture.Context.MiddleOwnerGuildId = null;
+        fixture.Context.FinalGuildList.Clear();
+        fixture.Context.SiegeData.OwnerGuildId = null;
+        fixture.Context.SiegeData.IsOccupied = false;
+
+        await CastleSiegeCrownMechanics.CheckResultAsync(fixture.Context).ConfigureAwait(false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(fixture.Context.SiegeData.OwnerGuildId, Is.Null);
+            Assert.That(fixture.Context.SiegeData.IsOccupied, Is.False);
+        });
+        Mock.Get(observer.ViewPlugIns.GetPlugIn<ICastleSiegeOwnershipChangePlugIn>()!)
+            .Verify(plugIn => plugIn.ShowOwnershipChangeAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    /// <summary>
+    /// Verifies that an unresolved owner name does not announce success or discard persisted ownership.
+    /// </summary>
+    /// <param name="runtimeGuildId">The result of resolving the persistent guild identifier.</param>
+    /// <param name="guildName">The resolved guild name, or null for a missing guild.</param>
+    [TestCase(0u, null)]
+    [TestCase(DefenseGuildId, null)]
+    [TestCase(DefenseGuildId, "")]
+    [TestCase(DefenseGuildId, " ")]
+    public async ValueTask FinalResultWithUnresolvedOwnerDoesNotAnnounceSuccessAsync(uint runtimeGuildId, string? guildName)
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        var observer = await fixture.CreatePlayerAsync(AttackGuildId, "Observer", CastleSiegeJoinSide.None, 100, 100).ConfigureAwait(false);
+        fixture.Context.MiddleOwnerGuildId = null;
+        fixture.Context.FinalGuildList.Clear();
+        var guildServer = Mock.Get(fixture.GameServerContext.GuildServer);
+        guildServer.Setup(server => server.GetGuildIdAsync(fixture.DefensePersistentGuildId))
+            .Returns(new ValueTask<uint>(runtimeGuildId));
+        guildServer.Setup(server => server.GetGuildAsync(DefenseGuildId))
+            .Returns(new ValueTask<RuntimeGuild?>(guildName is null ? null : new RuntimeGuild { Name = guildName }));
+
+        await CastleSiegeCrownMechanics.CheckResultAsync(fixture.Context).ConfigureAwait(false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(fixture.Context.SiegeData.OwnerGuildId, Is.EqualTo(fixture.DefensePersistentGuildId));
+            Assert.That(fixture.Context.SiegeData.IsOccupied, Is.True);
+        });
+        Mock.Get(observer.ViewPlugIns.GetPlugIn<ICastleSiegeOwnershipChangePlugIn>()!)
+            .Verify(plugIn => plugIn.ShowOwnershipChangeAsync(It.IsAny<string>()), Times.Never);
     }
 
     /// <summary>
@@ -710,7 +1227,7 @@ public class CastleSiegeCrownMechanicsTests
         });
     }
 
-    private static async ValueTask<TestFixture> CreateFixtureAsync()
+    private static async ValueTask<TestFixture> CreateFixtureAsync(CastleSiegePlugIn? plugIn = null)
     {
         var persistenceContextProvider = new InMemoryPersistenceContextProvider();
         BasicModel.GameConfiguration gameConfiguration;
@@ -750,6 +1267,36 @@ public class CastleSiegeCrownMechanicsTests
                 State = CastleSiegeState.Start,
                 DayOfWeek = DayOfWeek.Tuesday,
             });
+            if (plugIn is not null)
+            {
+                configuration.RegisterMinMembers = 3;
+                configuration.ParticipantRewardMinSeconds = 5;
+                configuration.GuildScoreCastleSiege = 10;
+                var sign = persistenceContext.CreateNew<BasicModel.ItemDefinition>();
+                sign.Group = 14;
+                sign.Number = 21;
+                sign.Width = 1;
+                sign.Height = 1;
+                gameConfiguration.Items.Add(sign);
+                configuration.SignOfLordItemDefinition = sign;
+                var reward = persistenceContext.CreateNew<BasicModel.ItemDefinition>();
+                reward.Group = 14;
+                reward.Number = 13;
+                reward.Width = 1;
+                reward.Height = 1;
+                reward.Durability = 1;
+                gameConfiguration.Items.Add(reward);
+                configuration.RewardItemDefinition = reward;
+                foreach (var state in new[] { CastleSiegeState.RegisterGuild, CastleSiegeState.RegisterMark, CastleSiegeState.Notify, CastleSiegeState.End, CastleSiegeState.EndCycle })
+                {
+                    configuration.StateSchedule.Add(new BasicModel.CastleSiegeStateScheduleEntry
+                    {
+                        State = state,
+                        DayOfWeek = state is CastleSiegeState.End or CastleSiegeState.EndCycle ? DayOfWeek.Wednesday : DayOfWeek.Sunday,
+                        Hour = (byte)state,
+                    });
+                }
+            }
             gameConfiguration.CastleSiegeConfiguration = configuration;
 
             AddNpc(CastleSiegeCrown.MonsterNumber, 1, 60, 60);
@@ -797,6 +1344,18 @@ public class CastleSiegeCrownMechanicsTests
         guildServer
             .Setup(server => server.GetGuildAsync(AttackGuildId))
             .Returns(new ValueTask<RuntimeGuild?>(new RuntimeGuild { Name = "Attackers" }));
+        guildServer
+            .Setup(server => server.GetPersistentGuildIdAsync(AttackGuildId))
+            .Returns(new ValueTask<Guid?>(attackPersistentGuildId));
+        guildServer
+            .Setup(server => server.GetGuildListAsync(AttackGuildId))
+            .Returns(new ValueTask<IImmutableList<GuildListEntry>>(ImmutableList.Create(
+                new GuildListEntry { PlayerName = "CrownUser", PlayerPosition = GuildPosition.GuildMaster },
+                new GuildListEntry(),
+                new GuildListEntry())));
+        guildServer
+            .Setup(server => server.GetAllianceGuildsAsync(It.IsAny<uint>()))
+            .Returns(new ValueTask<IImmutableList<AllianceGuildEntry>>(ImmutableList<AllianceGuildEntry>.Empty));
 
         var plugInManager = new PlugInManager([], NullLoggerFactory.Instance, null, null);
         var mapInitializer = new MapInitializer(
@@ -824,25 +1383,35 @@ public class CastleSiegeCrownMechanicsTests
         mapInitializer.PathFinderPool = gameServerContext.PathFinderPool;
 
         var initializationTimeUtc = new DateTime(2026, 8, 3, 12, 0, 0, DateTimeKind.Utc);
-        var context = new CastleSiegeContext(gameServerContext, configuration);
-        await context.InitializeAsync(initializationTimeUtc).ConfigureAwait(false);
-        context.CurrentState = CastleSiegeState.Start;
-        context.FinalGuildList[DefenseGuildId] = new CastleSiegeGuildParticipant
+        CastleSiegeContext context;
+        if (plugIn is not null)
         {
-            GuildId = DefenseGuildId,
-            PersistentGuildId = defensePersistentGuildId,
-            GuildName = "Defenders",
-            Side = CastleSiegeJoinSide.Defense,
-            IsAllianceMaster = true,
-        };
-        context.FinalGuildList[AttackGuildId] = new CastleSiegeGuildParticipant
+            await plugIn.ExecuteTaskAsync(gameServerContext).ConfigureAwait(false);
+            context = plugIn.GetContext(gameServerContext) ?? throw new InvalidOperationException("The Castle Siege plug-in did not initialize its context.");
+        }
+        else
         {
-            GuildId = AttackGuildId,
-            PersistentGuildId = attackPersistentGuildId,
-            GuildName = "Attackers",
-            Side = CastleSiegeJoinSide.Attack1,
-            IsAllianceMaster = true,
-        };
+            context = new CastleSiegeContext(gameServerContext, configuration);
+            await context.InitializeAsync(initializationTimeUtc).ConfigureAwait(false);
+            context.CurrentState = CastleSiegeState.Start;
+            context.FinalGuildList[DefenseGuildId] = new CastleSiegeGuildParticipant
+            {
+                GuildId = DefenseGuildId,
+                PersistentGuildId = defensePersistentGuildId,
+                GuildName = "Defenders",
+                Side = CastleSiegeJoinSide.Defense,
+                IsAllianceMaster = true,
+            };
+            context.FinalGuildList[AttackGuildId] = new CastleSiegeGuildParticipant
+            {
+                GuildId = AttackGuildId,
+                PersistentGuildId = attackPersistentGuildId,
+                GuildName = "Attackers",
+                Side = CastleSiegeJoinSide.Attack1,
+                IsAllianceMaster = true,
+            };
+        }
+
         var map = await gameServerContext.GetMapAsync(30).ConfigureAwait(false)
                   ?? throw new InvalidOperationException("The Castle Siege test map could not be initialized.");
         return new(
@@ -876,7 +1445,8 @@ public class CastleSiegeCrownMechanicsTests
             string characterName,
             CastleSiegeJoinSide side,
             byte x,
-            byte y)
+            byte y,
+            CastleSiegePlugIn? plugIn = null)
         {
             var player = await PlayerTestHelper.CreatePlayerAsync(this.GameServerContext).ConfigureAwait(false);
             player.SelectedCharacter!.Id = Guid.NewGuid();
@@ -895,7 +1465,15 @@ public class CastleSiegeCrownMechanicsTests
             await player.ClientReadyAfterMapChangeAsync().ConfigureAwait(false);
             player.IsAlive = true;
             this.Context.TrackPlayer(player, this.SiegeMap);
-            this.Context.PlayerJoinSides[player.SelectedCharacter.Id] = side;
+            if (plugIn is not null)
+            {
+                await plugIn.ObjectAddedToMapAsync(this.SiegeMap, player).ConfigureAwait(false);
+            }
+            else
+            {
+                this.Context.PlayerJoinSides[player.SelectedCharacter.Id] = side;
+            }
+
             return player;
         }
 
@@ -915,5 +1493,14 @@ public class CastleSiegeCrownMechanicsTests
             this._crownTimeUtc += elapsed ?? TimeSpan.FromSeconds(1);
             return CastleSiegeCrownMechanics.CheckMiddleWinnerAsync(this.Context, this._crownTimeUtc.Value);
         }
+    }
+
+    private sealed class ManualTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        private DateTimeOffset _utcNow = utcNow;
+
+        public override DateTimeOffset GetUtcNow() => this._utcNow;
+
+        public void Advance(TimeSpan elapsed) => this._utcNow += elapsed;
     }
 }

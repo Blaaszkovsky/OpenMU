@@ -64,7 +64,8 @@ public sealed class CastleSiegeCrownIntelligence : CastleSiegeNpcIntelligenceBas
 
         // Only attackers can seal the Crown, so a defender or bystander standing next to it must not block them.
         // The current user keeps the Crown while eligible; a newcomer with a lower object id must not interrupt them.
-        var candidates = crown.CurrentMap.GetAttackablesInRange(crown.Position, 1)
+        // The Season 6 Crown footprint leaves the nearest walkable approach two tiles away.
+        var candidates = crown.CurrentMap.GetAttackablesInRange(crown.Position, 2)
             .OfType<Player>()
             .Where(player => player.IsAlive
                              && player.CurrentMap == crown.CurrentMap

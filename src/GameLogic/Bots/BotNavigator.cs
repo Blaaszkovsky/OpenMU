@@ -1239,9 +1239,9 @@ internal sealed class BotNavigator : AsyncDisposable
             return;
         }
 
-        // ... and otherwise close in on the nearest opposition instead of idling at the entrance
-        // when the wave spawned (or the Chaos Castle crowd moved) beyond the combat range.
-        if (!map.GetAttackablesInRange(this._player.Position, TravelStopRange).Any(this.IsEventTarget)
+        // Leave the entrance safezone even when an opponent is already nearby: attacks from it are refused.
+        if ((this._player.IsAtSafezone()
+                || !map.GetAttackablesInRange(this._player.Position, TravelStopRange).Any(this.IsEventTarget))
             && this.TryFindNearestEventTargetGround(map, out var ground))
         {
             await this.TravelTowardAsync(map, ground, cancellationToken).ConfigureAwait(false);

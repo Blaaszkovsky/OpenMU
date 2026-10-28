@@ -114,4 +114,6 @@
   <data name="EventDefinitionForTheKanturuRefineryTowerEvent" xml:space="preserve">
     <value>Eventdefinition für das Event im Raffinerieturm von Kanturu.</value>
   </data>
+  <data name="IllusionTempleEvent" xml:space="preserve"><value>Ein Teamkampf, bei dem heilige Relikte zum Lager des eigenen Teams gebracht werden.</value></data>
+  <data name="IllusionTempleWinningTeamChaosReward" xml:space="preserve"><value>Juwel des Chaos als Belohnung für das Siegerteam des Illusionstempels</value></data>
 </root>

@@ -114,4 +114,6 @@
   <data name="EventDefinitionForDevilSquareEventLevel5" xml:space="preserve">
     <value>Event definition for devil square event, level 5.</value>
   </data>
+  <data name="IllusionTempleEvent" xml:space="preserve"><value>A team battle to carry sacred relics to your team's storage.</value></data>
+  <data name="IllusionTempleWinningTeamChaosReward" xml:space="preserve"><value>Illusion Temple winning team Jewel of Chaos reward</value></data>
 </root>

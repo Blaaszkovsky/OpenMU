@@ -7,6 +7,7 @@ namespace MUnique.OpenMU.GameServer.RemoteView.CastleSiege;
 using System.Runtime.InteropServices;
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.GameLogic.Views.CastleSiege;
+using MUnique.OpenMU.Network;
 using MUnique.OpenMU.Network.Packets.ServerToClient;
 using MUnique.OpenMU.PlugIns;
 
@@ -74,18 +75,51 @@ public class CastleSiegeNpcOperationResultPlugIn : ICastleSiegeNpcOperationResul
             gateIndex);
 
     /// <inheritdoc />
-    public ValueTask ShowGateOperationResultAsync(
+    public async ValueTask ShowGateOperationResultAsync(
         CastleSiegeNpcOperationResult result,
         bool isOpen,
         ushort gateIndex)
-        => this._player.Connection.SendCastleSiegeGateOperateResponseAsync(
-            (byte)result,
-            isOpen,
-            gateIndex);
+    {
+        if (this._player.Connection is not { } connection)
+        {
+            return;
+        }
+
+        int WritePacket()
+        {
+            var length = CastleSiegeGateOperateResponseRef.Length;
+            var span = connection.Output.GetSpan(length)[..length];
+            // The client interprets the whole IsOpen byte, not just the generated boolean bit.
+            span.Clear();
+            var packet = new CastleSiegeGateOperateResponseRef(span);
+            packet.Result = (byte)result;
+            packet.IsOpen = isOpen;
+            packet.GateIndex = gateIndex;
+            return length;
+        }
+
+        await connection.SendAsync(WritePacket).ConfigureAwait(false);
+    }
 
     /// <inheritdoc />
-    public ValueTask ShowGateStateAsync(bool isOpen, ushort gateIndex)
-        => this._player.Connection.SendCastleSiegeGateStateNotificationAsync(
-            isOpen,
-            gateIndex);
+    public async ValueTask ShowGateStateAsync(bool isOpen, ushort gateIndex)
+    {
+        if (this._player.Connection is not { } connection)
+        {
+            return;
+        }
+
+        int WritePacket()
+        {
+            var length = CastleSiegeGateStateNotificationRef.Length;
+            var span = connection.Output.GetSpan(length)[..length];
+            span.Clear();
+            var packet = new CastleSiegeGateStateNotificationRef(span);
+            packet.IsOpen = isOpen;
+            packet.GateIndex = gateIndex;
+            return length;
+        }
+
+        await connection.SendAsync(WritePacket).ConfigureAwait(false);
+    }
 }

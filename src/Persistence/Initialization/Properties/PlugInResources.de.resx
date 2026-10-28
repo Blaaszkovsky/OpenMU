@@ -828,4 +828,6 @@
   <data name="AddRageFighterAncientSetsUpdatePlugIn_Description" xml:space="preserve"><value>Dieses Update fügt die Ancient-Sets Vega und Chamer der Sacred-Gegenstände hinzu.</value></data>
   <data name="ConfigureCastleSiegeGuardTalkPlugInsUpdatePlugIn_Name" xml:space="preserve"><value>Wachen von Castle Siege konfigurieren</value></data>
   <data name="ConfigureCastleSiegeGuardTalkPlugInsUpdatePlugIn_Description" xml:space="preserve"><value>Die Gardisten an der Brücke der Karte von Castle Siege öffnen das Anmeldefenster, und die Wache am Eingang zum Land der Prüfungen wird zu einem passiven NPC, der den Dialog des Landes der Prüfungen öffnet.</value></data>
+  <data name="AddIllusionTempleDataUpdatePlugIn_Name" xml:space="preserve"><value>Daten des Illusionstempels hinzufügen</value></data>
+  <data name="AddIllusionTempleDataUpdatePlugIn_Description" xml:space="preserve"><value>Fügt die Ereignisse des Illusionstempels für Season 6 hinzu und ersetzt veraltete Standard-NPCs der Renewal-Version, ohne eigene Ereigniseinstellungen zu überschreiben.</value></data>
 </root>

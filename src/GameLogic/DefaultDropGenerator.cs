@@ -562,7 +562,7 @@ public class DefaultDropGenerator : IDropGenerator
 
         foreach (var group in groups)
         {
-            if (remainingThreshold > group.Chance)
+            if (remainingThreshold >= group.Chance)
             {
                 remainingThreshold -= group.Chance;
             }

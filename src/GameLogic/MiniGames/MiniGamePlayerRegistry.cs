@@ -82,7 +82,10 @@ internal sealed class MiniGamePlayerRegistry
                 return EnterResult.Failed;
             }
 
-            this._players.Add(player);
+            if (!this._players.Add(player))
+            {
+                return EnterResult.Failed;
+            }
         }
 
         return EnterResult.Success;

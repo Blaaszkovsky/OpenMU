@@ -12,6 +12,7 @@ using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameLogic.MiniGames.Kanturu;
 using MUnique.OpenMU.GameLogic.NPC;
+using MUnique.OpenMU.Pathfinding;
 using MonsterAttribute = MUnique.OpenMU.Persistence.BasicModel.MonsterAttribute;
 using MonsterDefinition = MUnique.OpenMU.Persistence.BasicModel.MonsterDefinition;
 
@@ -33,6 +34,23 @@ public class KanturuPhaseRunnerTests
     {
         this._gameContext = GameContextTestHelper.CreateGameContext();
         this._map = (await this._gameContext.GetMapAsync(0).ConfigureAwait(false))!;
+    }
+
+    /// <summary>
+    /// Releases the map's NPCs and the context timers created for this test.
+    /// </summary>
+    [TearDown]
+    public async Task TearDownAsync()
+    {
+        if (this._map is not null)
+        {
+            await this._map.TearDownAsync().ConfigureAwait(false);
+        }
+
+        if (this._gameContext is IAsyncDisposable disposable)
+        {
+            await disposable.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -205,8 +223,10 @@ public class KanturuPhaseRunnerTests
     [Test]
     public async Task NightmareRunner_SpawnTimeout_StartsAfterPhaseBegin()
     {
-        var monster = CreateNightmare(this._map, this._gameContext);
+        var monster = await this.CreateNightmareAsync().ConfigureAwait(false);
         monster.Health = 700; // 70% of 1000, below the 75% threshold.
+        Assert.That(monster.Attributes[Stats.MaximumHealth], Is.EqualTo(1000));
+        Assert.That(this._map.GetNpcsInRange(new Point(100, 100), 1), Does.Contain(monster));
 
         var phase = new KanturuPhaseDefinition
         {
@@ -400,8 +420,10 @@ public class KanturuPhaseRunnerTests
 
     private async Task<(bool Completed, List<byte> Waves, int LiveCountShows)> RunSummonScenarioAsync()
     {
-        var monster = CreateNightmare(this._map, this._gameContext);
+        var monster = await this.CreateNightmareAsync().ConfigureAwait(false);
         monster.Health = 700; // 70% of 1000, below the 75% threshold.
+        Assert.That(monster.Attributes[Stats.MaximumHealth], Is.EqualTo(1000));
+        Assert.That(this._map.GetNpcsInRange(new Point(100, 100), 1), Does.Contain(monster));
 
         var phase = new KanturuPhaseDefinition
         {
@@ -462,8 +484,10 @@ public class KanturuPhaseRunnerTests
 
     private async Task<(bool Completed, int Messages, List<byte> Waves)> RunNoSummonScenarioAsync()
     {
-        var monster = CreateNightmare(this._map, this._gameContext);
+        var monster = await this.CreateNightmareAsync().ConfigureAwait(false);
         monster.Health = 700; // 70% of 1000, below the 75% threshold.
+        Assert.That(monster.Attributes[Stats.MaximumHealth], Is.EqualTo(1000));
+        Assert.That(this._map.GetNpcsInRange(new Point(100, 100), 1), Does.Contain(monster));
 
         var phase = new KanturuPhaseDefinition
         {
@@ -517,10 +541,25 @@ public class KanturuPhaseRunnerTests
         return (completed, messages, waves);
     }
 
-    private static Monster CreateNightmare(GameMap map, IGameContext gameContext)
+    /// <summary>
+    /// A preceding low-health fixture must not supply the cached attributes of a different Nightmare definition.
+    /// </summary>
+    [Test]
+    public async Task NightmareFixtureKeepsHealthIndependentOfPreviouslyCreatedDefinitionAsync()
     {
-        var definition = new MonsterDefinition { ObjectKind = NpcObjectKind.Monster };
-        definition.Attributes.Add(new MonsterAttribute { AttributeDefinition = Stats.MaximumHealth, Value = 1000 });
+        var precedingMonster = await this.CreateNightmareAsync(1).ConfigureAwait(false);
+        var nightmare = await this.CreateNightmareAsync().ConfigureAwait(false);
+
+        Assert.That(precedingMonster.Attributes[Stats.MaximumHealth], Is.EqualTo(1));
+        Assert.That(nightmare.Attributes[Stats.MaximumHealth], Is.EqualTo(1000));
+        Assert.That(nightmare.Health, Is.EqualTo(1000));
+    }
+
+    private async Task<Monster> CreateNightmareAsync(int maximumHealth = 1000)
+    {
+        // BasicModel equality and the shared monster-stat cache use Id, so each fixture definition needs its own identity.
+        var definition = new MonsterDefinition { Id = Guid.NewGuid(), ObjectKind = NpcObjectKind.Monster };
+        definition.Attributes.Add(new MonsterAttribute { AttributeDefinition = Stats.MaximumHealth, Value = maximumHealth });
         var spawnArea = new MonsterSpawnArea
         {
             MonsterDefinition = definition,
@@ -533,12 +572,13 @@ public class KanturuPhaseRunnerTests
         var monster = new Monster(
             spawnArea,
             definition,
-            map,
+            this._map,
             NullDropGenerator.Instance,
             new Mock<INpcIntelligence>().Object,
-            gameContext.PlugInManager,
-            gameContext.PathFinderPool);
+            this._gameContext.PlugInManager,
+            this._gameContext.PathFinderPool);
         monster.Initialize();
+        await this._map.AddAsync(monster).ConfigureAwait(false);
         return monster;
     }
 }

@@ -10,9 +10,11 @@ using Microsoft.Extensions.Logging;
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.DataModel.Entities;
 using MUnique.OpenMU.GameLogic.Attributes;
+using MUnique.OpenMU.GameLogic.MiniGames;
 using MUnique.OpenMU.GameLogic.PlayerActions;
 using MUnique.OpenMU.GameLogic.PlayerActions.Chat;
 using MUnique.OpenMU.GameLogic.PlayerActions.Items;
+using MUnique.OpenMU.GameLogic.PlayerActions.MiniGames;
 using MUnique.OpenMU.GameLogic.PlayerActions.Skills;
 using MUnique.OpenMU.GameLogic.PlugIns;
 using MUnique.OpenMU.Pathfinding;
@@ -238,6 +240,7 @@ public sealed class ScriptedIntelligence : IAsyncDisposable
 
         return command switch
         {
+            EnterDevilSquareCommand => this.EnterDevilSquareAsync(cancellationToken),
             WalkCommand walk => this.WalkAsync(walk, cancellationToken),
             AttackCommand attack => this.AttackAsync(attack, cancellationToken),
             SkillCommand skill => this.SkillAsync(skill),
@@ -246,6 +249,51 @@ public sealed class ScriptedIntelligence : IAsyncDisposable
             WarpCommand warp => this.WarpAsync(warp),
             _ => ValueTask.FromResult(ActorCommandResult.Failure(ActorErrorCodes.Failed, $"Unknown command '{command.Name}'.")),
         };
+    }
+
+    private async ValueTask<ActorCommandResult> EnterDevilSquareAsync(CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return this.Interrupted("enterDS7");
+        }
+
+        return await this._player.RunPersistenceExclusiveAsync(
+            async () =>
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return this.Interrupted("enterDS7");
+                }
+
+                if (this._player.CurrentMiniGame is not null)
+                {
+                    return ActorCommandResult.Failure(ActorErrorCodes.MiniGameEntryRefused, "The actor is already in a mini game.");
+                }
+
+                var previousSequence = this._player.EventLog.LastSequence;
+                await new EnterMiniGameAction()
+                    .TryEnterMiniGameAsync(this._player, MiniGameType.DevilSquare, 7, byte.MaxValue)
+                    .ConfigureAwait(false);
+
+                if (this._player.CurrentMiniGame is { Definition.Type: MiniGameType.DevilSquare, Definition.GameLevel: 7 } game)
+                {
+                    return ActorCommandResult.Success(
+                        new ActorEventField("mini_game", nameof(MiniGameType.DevilSquare)),
+                        new ActorEventField("game_level", game.Definition.GameLevel),
+                        new ActorEventField("map_number", game.Map.Definition.Number));
+                }
+
+                var resultEvent = this._player.EventLog.Since(previousSequence)
+                    .FirstOrDefault(actorEvent => actorEvent.Type == "mini_game_entry_result");
+                var result = resultEvent?.Fields.FirstOrDefault(field => field.Name == "result").Value?.ToString() ?? nameof(EnterResult.Failed);
+                var errorCode = result == nameof(EnterResult.Full) ? ActorErrorCodes.MiniGameFull : ActorErrorCodes.MiniGameEntryRefused;
+                return ActorCommandResult.Failure(
+                    errorCode,
+                    "The ordinary Devil Square level 7 entry action refused the actor.",
+                    new ActorEventField("enter_result", result));
+            },
+            CancellationToken.None).ConfigureAwait(false);
     }
 
     private async ValueTask<ActorCommandResult> WalkAsync(WalkCommand command, CancellationToken cancellationToken)

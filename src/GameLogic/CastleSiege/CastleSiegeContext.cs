@@ -368,6 +368,18 @@ public class CastleSiegeContext : IEventStateProvider
             .Select(npc => npc.PersistedState!)
             .ToDictionary(GetNpcKey);
 
+        // Completeness follows the current configuration, which may intentionally remove saved structures.
+        var configuredKeys = this.Configuration.NpcDefinitions
+            .Where(definition => definition.IsPersistedToDatabase)
+            .Select(definition => (
+                definition.MonsterDefinition?.Number ?? throw Error.NotInitializedProperty(definition, nameof(definition.MonsterDefinition)),
+                definition.InstanceId))
+            .ToHashSet();
+        if (!configuredKeys.SetEquals(statesToSave.Keys))
+        {
+            return;
+        }
+
         using var context = this._gameContext.PersistenceContextProvider.CreateNewTypedContext(typeof(CastleSiegeData), false, this._gameContext.Configuration);
         var persistentData = await context.GetByIdAsync<CastleSiegeData>(this.SiegeData.Id).ConfigureAwait(false)
             ?? throw new InvalidOperationException("The persistent Castle Siege state no longer exists.");
@@ -818,6 +830,58 @@ public class CastleSiegeContext : IEventStateProvider
         return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
     }
 
+    /// <summary>
+    /// Resolves a player's side, including persistent membership before the runtime guild callback.
+    /// </summary>
+    /// <param name="player">The player whose current membership is resolved.</param>
+    /// <returns>The selected guild's side, or None for an unassigned character.</returns>
+    internal async ValueTask<CastleSiegeJoinSide> ResolvePlayerJoinSideAsync(Player player)
+    {
+        if (player.GuildStatus is not { } guildStatus)
+        {
+            if (this.CurrentState != CastleSiegeState.Start || player.SelectedCharacter is not { } character)
+            {
+                return CastleSiegeJoinSide.None;
+            }
+
+            // Normal character admission precedes the GuildServer assignment callback.
+            using var guildContext = this._gameContext.PersistenceContextProvider.CreateNewGuildContext();
+            if (await guildContext.GetGuildMembershipAsync(character.Name).ConfigureAwait(false) is not { } membership
+                || membership.CharacterId != character.Id)
+            {
+                return CastleSiegeJoinSide.None;
+            }
+
+            return this.FinalGuildList.Values.FirstOrDefault(guild => guild.PersistentGuildId == membership.GuildId)?.Side
+                ?? CastleSiegeJoinSide.None;
+        }
+
+        if (this.FinalGuildList.TryGetValue(guildStatus.GuildId, out var runtimeGuild))
+        {
+            return runtimeGuild.Side;
+        }
+
+        if (this._gameContext is not IGameServerContext gameServerContext
+            || await gameServerContext.GuildServer
+                .GetPersistentGuildIdAsync(guildStatus.GuildId)
+                .ConfigureAwait(false) is not { } persistentGuildId)
+        {
+            return CastleSiegeJoinSide.None;
+        }
+
+        var persistedEntry = this.FinalGuildList.FirstOrDefault(
+            entry => entry.Value.PersistentGuildId == persistentGuildId);
+        if (persistedEntry.Value is null)
+        {
+            return CastleSiegeJoinSide.None;
+        }
+
+        this.FinalGuildList.TryRemove(persistedEntry.Key, out _);
+        persistedEntry.Value.GuildId = guildStatus.GuildId;
+        this.FinalGuildList[guildStatus.GuildId] = persistedEntry.Value;
+        return persistedEntry.Value.Side;
+    }
+
     private static void CopyScalarState(CastleSiegeData source, CastleSiegeData target)
     {
         target.OwnerGuildId = source.OwnerGuildId;
@@ -965,38 +1029,5 @@ public class CastleSiegeContext : IEventStateProvider
         }
 
         this.InitializeBattleOwner();
-    }
-
-    private async ValueTask<CastleSiegeJoinSide> ResolvePlayerJoinSideAsync(Player player)
-    {
-        if (player.GuildStatus is not { } guildStatus)
-        {
-            return CastleSiegeJoinSide.None;
-        }
-
-        if (this.FinalGuildList.TryGetValue(guildStatus.GuildId, out var runtimeGuild))
-        {
-            return runtimeGuild.Side;
-        }
-
-        if (this._gameContext is not IGameServerContext gameServerContext
-            || await gameServerContext.GuildServer
-                .GetPersistentGuildIdAsync(guildStatus.GuildId)
-                .ConfigureAwait(false) is not { } persistentGuildId)
-        {
-            return CastleSiegeJoinSide.None;
-        }
-
-        var persistedEntry = this.FinalGuildList.FirstOrDefault(
-            entry => entry.Value.PersistentGuildId == persistentGuildId);
-        if (persistedEntry.Value is null)
-        {
-            return CastleSiegeJoinSide.None;
-        }
-
-        this.FinalGuildList.TryRemove(persistedEntry.Key, out _);
-        persistedEntry.Value.GuildId = guildStatus.GuildId;
-        this.FinalGuildList[guildStatus.GuildId] = persistedEntry.Value;
-        return persistedEntry.Value.Side;
     }
 }

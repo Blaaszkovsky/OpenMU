@@ -40,11 +40,9 @@ public class MiniGameOpeningStateRequestAction
         {
             case MiniGameType.BloodCastle:
             case MiniGameType.DevilSquare:
-                await player.ShowLocalizedBlueMessageAsync(nameof(PlayerMessage.EventMapCreatedOnEntranceWithoutTimetable)).ConfigureAwait(false);
-                break;
             case MiniGameType.Doppelganger:
             case MiniGameType.IllusionTemple:
-                await player.ShowLocalizedBlueMessageAsync(nameof(PlayerMessage.EventNotImplementedYet)).ConfigureAwait(false);
+                await player.ShowLocalizedBlueMessageAsync(nameof(PlayerMessage.EventMapCreatedOnEntranceWithoutTimetable)).ConfigureAwait(false);
                 break;
             default:
                 throw new ArgumentOutOfRangeException($"Unhandled event type {miniGameType}.");

@@ -1,15 +1,17 @@
-﻿// <copyright file="CastleSiegePlugIn.cs" company="MUnique">
+// <copyright file="CastleSiegePlugIn.cs" company="MUnique">
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.
 // </copyright>
 
 namespace MUnique.OpenMU.GameLogic.CastleSiege;
 
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.GameLogic.CastleSiege.NPC;
 using MUnique.OpenMU.GameLogic.PlugIns;
+using MUnique.OpenMU.GameLogic.Views.CastleSiege;
 using MUnique.OpenMU.PlugIns;
 
 /// <summary>
@@ -18,8 +20,9 @@ using MUnique.OpenMU.PlugIns;
 [PlugIn]
 [Display(Name = nameof(PlugInResources.CastleSiegePlugIn_Name), Description = nameof(PlugInResources.CastleSiegePlugIn_Description), ResourceType = typeof(PlugInResources))]
 [Guid("B7F62FA9-59E6-49E9-B499-0358A14957CF")]
-public class CastleSiegePlugIn : IPeriodicTaskPlugIn, IObjectAddedToMapPlugIn, IObjectRemovedFromMapPlugIn, IPlayerStateChangedPlugIn, IPlayerSpawnGateSelectionPlugIn
+public class CastleSiegePlugIn : IPeriodicTaskPlugIn, IObjectAddedToMapPlugIn, IObjectRemovedFromMapPlugIn, IPlayerStateChangedPlugIn, IPlayerSpawnGateSelectionPlugIn, IWarpGateEnteringPlugIn, IPlayerEnteringWorldPlugIn
 {
+    private const short ThroneRoomEntryGateNumber = 96;
     private static readonly TimeSpan EconomySaveInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan NpcSaveInterval = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan ParticipantUpdateInterval = TimeSpan.FromSeconds(5);
@@ -27,6 +30,7 @@ public class CastleSiegePlugIn : IPeriodicTaskPlugIn, IObjectAddedToMapPlugIn, I
 
     private readonly ConditionalWeakTable<IGameContext, CastleSiegeContext> _contexts = new();
     private readonly TimeProvider _timeProvider;
+    private readonly ConditionalWeakTable<Player, InitialAdmission> _initialAdmissions = new();
 
     private int _forceRequestVersion;
     private int _forcedState = (int)CastleSiegeState.Start;
@@ -55,12 +59,92 @@ public class CastleSiegePlugIn : IPeriodicTaskPlugIn, IObjectAddedToMapPlugIn, I
     public void ForceStart() => this.ForceState(CastleSiegeState.Start);
 
     /// <inheritdoc />
+    public async ValueTask PlayerEnteringWorldAsync(Player player)
+    {
+        if (player.PlayerState.CurrentState != PlayerState.CharacterSelection
+            || player.CurrentMiniGame is not null
+            || player.SelectedCharacter is not { CurrentMap: { } storedMap } character
+            || player.GameContext.Configuration.CastleSiegeConfiguration is not
+                { Enabled: true, CastleSiegeMapDefinition: { } siegeMap }
+            || storedMap.Number != siegeMap.Number)
+        {
+            return;
+        }
+
+        // A configured siege must finish its ordinary startup before admitting a stored inner point.
+        var context = this.GetContext(player.GameContext);
+        if (context is not { IsInitialized: true })
+        {
+            throw new InvalidOperationException("Castle Siege is not initialized for character admission.");
+        }
+
+        await context.ExecutionLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            this._initialAdmissions.Remove(player);
+            if (context.CurrentState != CastleSiegeState.Start)
+            {
+                this._initialAdmissions.Add(player, new InitialAdmission(null, CastleSiegeJoinSide.None));
+                return;
+            }
+
+            var side = await context.ResolvePlayerJoinSideAsync(player).ConfigureAwait(false);
+
+            // Unassigned characters retain side None, but cannot use an inner saved point to bypass gates.
+            var gate = context.GetRespawnGate(side == CastleSiegeJoinSide.None ? CastleSiegeJoinSide.Attack1 : side)
+                ?? throw new InvalidOperationException("Castle Siege has no admission spawn area.");
+            var map = await player.GameContext.GetMapAsync((ushort)siegeMap.Number).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("Castle Siege admission map is unavailable.");
+            var point = gate.GetRandomPoint();
+            if (!map.Terrain.WalkMap[point.X, point.Y])
+            {
+                point = map.Terrain.GetWalkableCoordinate(gate)
+                    ?? throw new InvalidOperationException("Castle Siege admission area is blocked.");
+            }
+
+            character.PositionX = point.X;
+            character.PositionY = point.Y;
+            player.Rotation = gate.Direction;
+            context.PlayerJoinSides[character.Id] = side;
+            this._initialAdmissions.Add(player, new InitialAdmission(context.StateStartTimeUtc, side));
+        }
+        finally
+        {
+            context.ExecutionLock.Release();
+        }
+    }
+
+    /// <inheritdoc />
     public async ValueTask ObjectAddedToMapAsync(GameMap map, ILocateable addedObject)
     {
         if (addedObject is Player player
             && this.GetContext(player.GameContext) is { } context)
         {
+            InitialAdmission? admission;
+            lock (this._initialAdmissions)
+            {
+                this._initialAdmissions.TryGetValue(player, out admission);
+                this._initialAdmissions.Remove(player);
+            }
+
+            // A siege tick can respawn tracked players and re-enter this callback while holding
+            // ExecutionLock. Consume the one-shot marker before making this player visible to it.
             context.TrackPlayer(player, map);
+            if (admission is not null)
+            {
+                try
+                {
+                    await this.CompleteInitialAdmissionAsync(player, map, context, admission).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // CompleteInitialAdmissionAsync has released ExecutionLock. A post-add failure
+                    // must remove the already alive/AOI-registered player, not only log an exception.
+                    await player.DisconnectAsync().ConfigureAwait(false);
+                    throw;
+                }
+            }
+
             await this.SynchronizePlayerAsync(player, map, context).ConfigureAwait(false);
         }
     }
@@ -93,6 +177,26 @@ public class CastleSiegePlugIn : IPeriodicTaskPlugIn, IObjectAddedToMapPlugIn, I
         // See PlayerStateChangedAsync for why this doesn't take the ExecutionLock.
         context.NpcController.ClearMachineOperator(player);
         await context.ClearPlayerJoinSideAsync(player).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public ValueTask WarpGateEnteringAsync(Player player, ExitGate targetGate, CancelEventArgs eventArgs)
+    {
+        if (this.GetContext(player.GameContext) is not { CurrentState: CastleSiegeState.Start } context
+            || context.Configuration.CastleSiegeMapDefinition is not { } siegeMap
+            || player.CurrentMap?.Definition.Number != siegeMap.Number
+            || targetGate.Map?.Number != siegeMap.Number
+            || !siegeMap.EnterGates.Any(gate =>
+                gate.Number == ThroneRoomEntryGateNumber && ReferenceEquals(gate.TargetGate, targetGate))
+            || context.GetPlayerJoinSide(player) == CastleSiegeJoinSide.Defense
+            || !context.NpcController.GetRuntimeSnapshot().Any(npc =>
+                npc.Definition.MonsterDefinition?.Number == CastleSiegeStatue.MonsterNumber && npc.IsAlive))
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        eventArgs.Cancel = true;
+        return ValueTask.CompletedTask;
     }
 
     /// <inheritdoc />
@@ -209,9 +313,9 @@ public class CastleSiegePlugIn : IPeriodicTaskPlugIn, IObjectAddedToMapPlugIn, I
                 await context.InitializeAsync(utcNow).ConfigureAwait(false);
                 context.NextEconomySaveUtc = utcNow + EconomySaveInterval;
                 this.ConfigureNotifications(context, utcNow);
+                await this.BroadcastStateUpdateAsync(context).ConfigureAwait(false);
                 await this.OnEnterStateAsync(context, true).ConfigureAwait(false);
                 await CastleSiegeEconomyNotifier.BroadcastTaxRatesAsync(context).ConfigureAwait(false);
-                await this.BroadcastStateUpdateAsync(context).ConfigureAwait(false);
                 logger.LogInformation(
                     "Castle Siege initialized in state {state}; the state ends at {stateEndUtc}.",
                     context.CurrentState,
@@ -251,8 +355,34 @@ public class CastleSiegePlugIn : IPeriodicTaskPlugIn, IObjectAddedToMapPlugIn, I
     /// Broadcasts a state update to players on the Castle Siege map.
     /// </summary>
     /// <param name="context">The Castle Siege context.</param>
-    /// <remarks>The packet-backed implementation is added with the Castle Siege network view phase.</remarks>
-    protected virtual ValueTask BroadcastStateUpdateAsync(CastleSiegeContext context) => ValueTask.CompletedTask;
+    protected virtual ValueTask BroadcastStateUpdateAsync(CastleSiegeContext context)
+        => context.ForEachSiegePlayerAsync(player => SynchronizeBattleStateAsync(player, context).AsTask());
+
+    private static bool CanSynchronizeStatus(Player player)
+    {
+        var state = player.PlayerState.CurrentState;
+        return player.SelectedCharacter is not null && player.IsConnected
+            && state != PlayerState.Initial && state != PlayerState.LoginScreen
+            && state != PlayerState.Authenticated && state != PlayerState.CharacterSelection;
+    }
+
+    private static async ValueTask SynchronizeBattleStateAsync(Player player, CastleSiegeContext context)
+    {
+        if (!CanSynchronizeStatus(player))
+        {
+            return;
+        }
+
+        await player.InvokeViewPlugInAsync<ICastleSiegeStatusPlugIn>(
+            view => view.ShowBattleStateAsync(context.CurrentState == CastleSiegeState.Start)).ConfigureAwait(false);
+        await SynchronizeRemainingTimeAsync(player, context).ConfigureAwait(false);
+    }
+
+    private static ValueTask SynchronizeRemainingTimeAsync(Player player, CastleSiegeContext context)
+        => CanSynchronizeStatus(player)
+            ? player.InvokeViewPlugInAsync<ICastleSiegeStatusPlugIn>(view => view.ShowRemainingTimeAsync(
+                context.CurrentState == CastleSiegeState.Start ? context.RemainingTime : TimeSpan.Zero))
+            : ValueTask.CompletedTask;
 
     private static TimeSpan? GetNotificationInterval(CastleSiegeState state)
     {
@@ -308,14 +438,65 @@ public class CastleSiegePlugIn : IPeriodicTaskPlugIn, IObjectAddedToMapPlugIn, I
         }
     }
 
+    private async ValueTask CompleteInitialAdmissionAsync(
+        Player player,
+        GameMap map,
+        CastleSiegeContext context,
+        InitialAdmission admission)
+    {
+        if (player.CurrentMap != map || map.Definition.Number != context.Configuration.CastleSiegeMapDefinition?.Number)
+        {
+            return;
+        }
+
+        await context.ExecutionLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (context.CurrentState != CastleSiegeState.Start)
+            {
+                return;
+            }
+
+            var side = await context.ResolvePlayerJoinSideAsync(player).ConfigureAwait(false);
+            if (admission.BattleStartUtc == context.StateStartTimeUtc && admission.Side == side)
+            {
+                return;
+            }
+
+            // Start may have happened while the initial character-info views were awaited.
+            // This one-shot correction runs after the state-machine transition has completed.
+            var gate = context.GetRespawnGate(side == CastleSiegeJoinSide.None ? CastleSiegeJoinSide.Attack1 : side)
+                ?? throw new InvalidOperationException("Castle Siege has no admission spawn area.");
+            var point = gate.GetRandomPoint();
+            if (!map.Terrain.WalkMap[point.X, point.Y])
+            {
+                point = map.Terrain.GetWalkableCoordinate(gate)
+                    ?? throw new InvalidOperationException("Castle Siege admission area is blocked.");
+            }
+
+            await player.MoveAsync(point).ConfigureAwait(false);
+            context.PlayerJoinSides[player.SelectedCharacter!.Id] = side;
+        }
+        finally
+        {
+            context.ExecutionLock.Release();
+        }
+    }
+
     private async ValueTask SynchronizePlayerAsync(
         Player player,
         GameMap map,
         CastleSiegeContext context)
     {
         await CastleSiegeEconomyNotifier.SynchronizePlayerAsync(context, player).ConfigureAwait(false);
-        if (context.CurrentState is not (CastleSiegeState.Ready or CastleSiegeState.Start)
-            || context.Configuration.CastleSiegeMapDefinition?.Number != map.Definition.Number)
+        if (context.Configuration.CastleSiegeMapDefinition?.Number != map.Definition.Number)
+        {
+            return;
+        }
+
+        // The battle packet reloads client terrain. Send it before restoring individual gate attributes.
+        await SynchronizeBattleStateAsync(player, context).ConfigureAwait(false);
+        if (context.CurrentState is not (CastleSiegeState.Ready or CastleSiegeState.Start))
         {
             return;
         }
@@ -363,13 +544,13 @@ public class CastleSiegePlugIn : IPeriodicTaskPlugIn, IObjectAddedToMapPlugIn, I
 
         context.SetPeriod(period);
         this.ConfigureNotifications(context, period.StartUtc);
+        // Switch terrain before preparing or synchronizing NPCs on the new terrain.
+        await this.BroadcastStateUpdateAsync(context).ConfigureAwait(false);
         await this.OnEnterStateAsync(context, false).ConfigureAwait(false);
         if (period.State != CastleSiegeState.End)
         {
             await context.SaveOwnerAsync().ConfigureAwait(false);
         }
-
-        await this.BroadcastStateUpdateAsync(context).ConfigureAwait(false);
 
         logger.LogInformation(
             "Castle Siege changed from state {previousState} to {state}; the state ends at {stateEndUtc}.",
@@ -545,8 +726,7 @@ public class CastleSiegePlugIn : IPeriodicTaskPlugIn, IObjectAddedToMapPlugIn, I
             context.NextNpcSaveUtc = utcNow + NpcSaveInterval;
         }
 
-        // Runs last: a fan-out to many players is more failure-prone than the rest of this tick, and it must
-        // not be able to skip the periodic NPC state save above if one send throws.
+        // Keep display fan-outs after core mechanics and persistence so their I/O cannot delay or skip that work.
         if (context.CurrentState == CastleSiegeState.Start
             && context.NextMiniMapUpdateUtc <= utcNow)
         {
@@ -556,6 +736,11 @@ public class CastleSiegePlugIn : IPeriodicTaskPlugIn, IObjectAddedToMapPlugIn, I
                 utcNow,
                 MiniMapUpdateInterval);
             await CastleSiegeMiniMap.BroadcastAsync(context).ConfigureAwait(false);
+        }
+
+        if (context.CurrentState == CastleSiegeState.Start)
+        {
+            await context.ForEachSiegePlayerAsync(player => SynchronizeRemainingTimeAsync(player, context).AsTask()).ConfigureAwait(false);
         }
     }
 
@@ -594,4 +779,6 @@ public class CastleSiegePlugIn : IPeriodicTaskPlugIn, IObjectAddedToMapPlugIn, I
             ? ValueTask.CompletedTask
             : context.GameContext.SendGlobalNotificationAsync(message);
     }
+
+    private sealed record InitialAdmission(DateTime? BattleStartUtc, CastleSiegeJoinSide Side);
 }

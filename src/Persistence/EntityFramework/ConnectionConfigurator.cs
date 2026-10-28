@@ -4,12 +4,12 @@
 
 namespace MUnique.OpenMU.Persistence.EntityFramework;
 
-using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Nito.AsyncEx.Synchronous;
+using Npgsql;
 
 /// <summary>
 /// The database roles.
@@ -80,7 +80,7 @@ public static class ConnectionConfigurator
     {
         Provider.Initialization?.WaitWithoutException();
         var settings = Provider.GetConnectionSetting(GetContextTypeOfRole(role));
-        return Regex.Match(settings.ConnectionString!, "User Id=([^;]+?);").Groups[1].Value;
+        return GetRoleNameFromConnectionString(settings.ConnectionString!);
     }
 
     /// <summary>
@@ -92,7 +92,28 @@ public static class ConnectionConfigurator
     {
         Provider.Initialization?.WaitWithoutException();
         var settings = Provider.GetConnectionSetting(GetContextTypeOfRole(role));
-        return Regex.Match(settings.ConnectionString!, "Password=([^;]+?);").Groups[1].Value;
+        return GetRolePasswordFromConnectionString(settings.ConnectionString!);
+    }
+
+    /// <summary>
+    /// Gets the role name from a PostgreSQL connection string.
+    /// </summary>
+    /// <param name="connectionString">The PostgreSQL connection string.</param>
+    /// <returns>The username.</returns>
+    internal static string GetRoleNameFromConnectionString(string connectionString)
+    {
+        return new NpgsqlConnectionStringBuilder(connectionString).Username
+               ?? throw new ArgumentException("The connection string has no username.", nameof(connectionString));
+    }
+
+    /// <summary>
+    /// Gets the role password from a PostgreSQL connection string.
+    /// </summary>
+    /// <param name="connectionString">The PostgreSQL connection string.</param>
+    /// <returns>The password.</returns>
+    internal static string GetRolePasswordFromConnectionString(string connectionString)
+    {
+        return new NpgsqlConnectionStringBuilder(connectionString).Password ?? string.Empty;
     }
 
     /// <summary>

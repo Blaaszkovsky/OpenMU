@@ -97,6 +97,7 @@ refused, so an actor can never drive a character someone else is driving.
 | `attack <id\|name> [--times N] [--interval ms]` | plain attacks against an object in view |
 | `skill <number> <id\|name>` | cast a learned skill |
 | `say`, `pickup`, `warp` | chat (including chat commands), pick up a drop, use a warp list entry |
+| `enterDS7` | for the fixed R12 scripted DS cohort only, request Devil Square level 7 entry through the normal server action; the command accepts no level or ticket-slot parameters and uses the actor's configured inventory ticket |
 | `halt` | cancel the walk or attack in flight, keeping the actor in the world |
 | `events [--since N] [--follow]` | the actor's event stream |
 

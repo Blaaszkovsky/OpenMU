@@ -1,4 +1,4 @@
-﻿// <copyright file="Player.cs" company="MUnique">
+// <copyright file="Player.cs" company="MUnique">
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.
 // </copyright>
 
@@ -780,6 +780,11 @@ public class Player : AsyncDisposable, IBucketMapObserver, IAttackable, IAttacke
         }
 
         if (this.IsAttackBlockedBySafezone(attacker))
+        {
+            return null;
+        }
+
+        if (this.CurrentMiniGame?.IsAttackAllowed(attacker, this) is false)
         {
             return null;
         }
@@ -1584,13 +1589,23 @@ public class Player : AsyncDisposable, IBucketMapObserver, IAttackable, IAttacke
 
         if (this.CurrentMiniGame is { } miniGame)
         {
-            if (this.PlayerState.CurrentState.IsDisconnectedOrFinished())
+            if (this.SelectedCharacter is null)
             {
-                // The connection got lost, so the player may come back while the game is still running.
-                miniGame.RememberDisconnectedPlayer(this);
+                // A second disconnect can arrive after the logout path has already moved the
+                // character to selection. There is no character/map from which to resolve a
+                // safezone, and this player cannot rejoin, so detach it from the event directly.
+                await miniGame.DetachPlayerAsync(this).ConfigureAwait(false);
             }
+            else
+            {
+                if (this.PlayerState.CurrentState.IsDisconnectedOrFinished())
+                {
+                    // The connection got lost, so the player may come back while the game is still running.
+                    miniGame.RememberDisconnectedPlayer(this);
+                }
 
-            moveToNextSafezone = true;
+                moveToNextSafezone = true;
+            }
         }
 
         if (this.DuelRoom is { })
@@ -1598,7 +1613,7 @@ public class Player : AsyncDisposable, IBucketMapObserver, IAttackable, IAttacke
             moveToNextSafezone = true;
         }
 
-        if (moveToNextSafezone)
+        if (moveToNextSafezone && this.SelectedCharacter is not null)
         {
             await this.WarpToSafezoneAsync().ConfigureAwait(false);
         }
@@ -2037,6 +2052,21 @@ public class Player : AsyncDisposable, IBucketMapObserver, IAttackable, IAttacke
         if (this.DetermineComboDefinition() is { } comboDefinition)
         {
             this._comboStateLazy = new Lazy<ComboStateMachine>(() => ComboStateMachine.Create(comboDefinition));
+        }
+
+        if (this.GameContext.PlugInManager.GetPlugInPoint<IPlayerEnteringWorldPlugIn>() is { } enteringWorldPlugIn)
+        {
+            try
+            {
+                await enteringWorldPlugIn.PlayerEnteringWorldAsync(this).ConfigureAwait(false);
+            }
+            catch
+            {
+                // A failed initial admission must not leave this character selected in CharacterSelection,
+                // where a subsequent selection of the same character would become a no-op.
+                await this.DisconnectAsync().ConfigureAwait(false);
+                throw;
+            }
         }
 
         await this.InvokeViewPlugInAsync<IUpdateCharacterStatsPlugIn>(p => p.UpdateCharacterStatsAsync()).ConfigureAwait(false);

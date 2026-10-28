@@ -8,6 +8,8 @@ using MUnique.OpenMU.AttributeSystem;
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameLogic.NPC;
+using MUnique.OpenMU.GameLogic.MiniGames;
+using MUnique.OpenMU.GameLogic.PlayerActions.MiniGames;
 using MUnique.OpenMU.GameLogic.Views;
 using MUnique.OpenMU.GameLogic.Views.Character;
 using MUnique.OpenMU.GameLogic.Views.World;
@@ -39,7 +41,8 @@ public sealed class RecordingViewPlugInContainer :
     IObjectsOutOfScopePlugIn,
     IObjectMovedPlugIn,
     IShowMessagePlugIn,
-    IShowSkillAnimationPlugIn
+    IShowSkillAnimationPlugIn,
+    IShowMiniGameEnterResultPlugIn
 {
     /// <summary>
     /// The attributes whose changes are recorded as <c>stat</c> events. The engine pushes an update
@@ -152,6 +155,16 @@ public sealed class RecordingViewPlugInContainer :
             new ActorEventField("sender", sender),
             new ActorEventField("message", message),
             new ActorEventField("chat_type", type.ToString()));
+        return ValueTask.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public ValueTask ShowResultAsync(MiniGameType miniGameType, EnterResult enterResult)
+    {
+        this.Log.Append(
+            "mini_game_entry_result",
+            new ActorEventField("mini_game", miniGameType.ToString()),
+            new ActorEventField("result", enterResult.ToString()));
         return ValueTask.CompletedTask;
     }
 

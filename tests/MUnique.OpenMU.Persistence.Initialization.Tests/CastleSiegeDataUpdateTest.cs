@@ -46,6 +46,8 @@ internal class CastleSiegeDataUpdateTest
         }
 
         var update = new AddCastleSiegeDataUpdatePlugIn();
+        // This fixture models the missing follow-up fields of version1, not owner edits after version2.
+        (await context.GetAsync<ConfigurationUpdate>().ConfigureAwait(false)).Single(entry => entry.Key == update.Key).Version = 1;
         await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
         await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
 

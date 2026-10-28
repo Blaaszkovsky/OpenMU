@@ -7,6 +7,7 @@ namespace MUnique.OpenMU.GameLogic.PlayerActions.Craftings;
 using MUnique.OpenMU.DataModel.Configuration.ItemCrafting;
 using MUnique.OpenMU.DataModel.Configuration.Items;
 using MUnique.OpenMU.GameLogic.PlayerActions.Items;
+using MUnique.OpenMU.GameLogic.Views.NPC;
 
 /// <summary>
 /// Crafting to remove a mounted seed sphere from a socket item.
@@ -28,17 +29,25 @@ public class RemoveSeedSphereCrafting : SimpleItemCraftingHandler
     public static byte SocketItemReference { get; } = 0x88;
 
     /// <inheritdoc />
+    protected override CraftingResult? ValidateMix(Player player, IList<CraftingRequiredItemLink> requiredItems, byte socketSlot)
+    {
+        var socketItem = requiredItems.Single(i => i.ItemRequirement.Reference == SocketItemReference).Items.Single();
+        if (socketItem.ItemOptions.Any(optionLink => optionLink.ItemOption?.OptionType == ItemOptionTypes.SocketOption && optionLink.Index == socketSlot))
+        {
+            return null;
+        }
+
+        player.Logger.LogWarning("Cannot remove a seed sphere: socket slot {socketSlot} is empty.", socketSlot);
+        return CraftingResult.LackingMixItems;
+    }
+
+    /// <inheritdoc />
     protected override async ValueTask<List<Item>> CreateOrModifyResultItemsAsync(IList<CraftingRequiredItemLink> requiredItems, Player player, byte socketSlot, byte successRate)
     {
         var socketItem = requiredItems.Single(i => i.ItemRequirement.Reference == SocketItemReference).Items.Single();
 
         var socketOption = socketItem.ItemOptions
-            .FirstOrDefault(optionLink => optionLink.ItemOption?.OptionType == ItemOptionTypes.SocketOption && optionLink.Index == socketSlot);
-        if (socketOption is null)
-        {
-            throw new ArgumentException($"No seed sphere is mounted on the socket slot {socketSlot}.");
-        }
-
+            .First(optionLink => optionLink.ItemOption?.OptionType == ItemOptionTypes.SocketOption && optionLink.Index == socketSlot);
         socketItem.ItemOptions.Remove(socketOption);
         await player.PersistenceContext.DeleteAsync(socketOption).ConfigureAwait(false);
 

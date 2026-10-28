@@ -97,7 +97,6 @@ internal class DatabaseSnapshotServiceTests
     /// Tests if a file which is no snapshot is rejected, so that the database isn't dropped for nothing.
     /// </summary>
     [Test]
-    [Ignore("This is not a real test which should run automatically. It requires a database.")]
     public async Task OtherFilesAreRejectedAsync()
     {
         var snapshotService = new DatabaseSnapshotService();

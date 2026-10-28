@@ -237,4 +237,7 @@
   <data name="BaskiWingsOfUnity" xml:space="preserve">
     <value>Baski: Wings of Unity</value>
   </data>
+  <data name="SignOfLord" xml:space="preserve">
+    <value>Sign of Lord (+3)</value>
+  </data>
 </root>

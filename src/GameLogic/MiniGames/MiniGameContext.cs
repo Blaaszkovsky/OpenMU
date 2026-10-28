@@ -216,6 +216,15 @@ public class MiniGameContext : AsyncDisposable, IEventStateProvider
     /// </summary>
     protected virtual int MinimumPlayerCount => 1;
 
+    /// <summary>Gets whether death preserves a participant's eligibility to reconnect.</summary>
+    protected virtual bool AllowDeadPlayerRejoin => false;
+
+    /// <summary>Determines whether this match permits the incoming attack.</summary>
+    /// <param name="attacker">The attacker.</param>
+    /// <param name="target">The player being attacked.</param>
+    /// <returns>Whether damage may be calculated and applied.</returns>
+    public virtual bool IsAttackAllowed(IAttacker attacker, Player target) => true;
+
     /// <summary>
     /// Tries to enter the mini game. It fails if it's full or if it's not in an open state.
     /// </summary>
@@ -302,10 +311,56 @@ public class MiniGameContext : AsyncDisposable, IEventStateProvider
     /// <param name="player">The player which is leaving the game.</param>
     internal void RememberDisconnectedPlayer(Player player)
     {
-        if (player is { IsAlive: true, SelectedCharacter: { } character }
+        if (player is { SelectedCharacter: { } character } && (player.IsAlive || this.AllowDeadPlayerRejoin)
             && this.State is MiniGameState.Open or MiniGameState.Closed or MiniGameState.Playing)
         {
             this._disconnectedCharacters[character.Id] = player.Position;
+        }
+    }
+
+    /// <summary>
+    /// Detaches a player which has already left character selection and can no longer be warped
+    /// out of the event map. This is deliberately different from remembering a disconnected
+    /// character: without a selected character there is nothing that can rejoin this match.
+    /// </summary>
+    /// <param name="player">The player to detach.</param>
+    internal async ValueTask DetachPlayerAsync(Player player)
+    {
+        if (this.Map.GetPlayers().Contains(player))
+        {
+            try
+            {
+                await this.Map.RemoveAsync(player).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // A map callback may fail after the map has already dropped the object. Keep
+                // registry cleanup independent so disconnect can't retain a stale event member.
+                this.Logger.LogError(ex, "Couldn't remove player {player} from mini game map {map} during disconnect.", player, this.Map);
+            }
+        }
+
+        if (player.CurrentMiniGame == this)
+        {
+            player.CurrentMiniGame = null;
+            player.PlayerPickedUpItem -= this.OnPlayerPickedUpItemAsync;
+            player.Died -= this.OnPlayerDied;
+        }
+
+        // Removing a map member normally removes it from the registry through the map callback.
+        // Also remove explicitly for players whose map transition never completed, and to recover
+        // from a callback failure after the map already removed the object.
+        var remainingPlayerCount = await this._players.RemoveAsync(player).ConfigureAwait(false);
+        if (remainingPlayerCount == 0 && this.State != MiniGameState.Open)
+        {
+            try
+            {
+                await this._gameEndedCts.CancelAsync().ConfigureAwait(false);
+            }
+            catch (ObjectDisposedException)
+            {
+                // The game was already disposed; a repeated disconnect must stay idempotent.
+            }
         }
     }
 
@@ -510,6 +565,11 @@ public class MiniGameContext : AsyncDisposable, IEventStateProvider
     }
 
     /// <summary>
+    /// Waits for the terrain and spawn changes triggered by the completed objectives.
+    /// </summary>
+    protected Task WaitForPendingChangeEventsAsync() => this._changeEvents.WaitForPendingChangesAsync();
+
+    /// <summary>
     /// Called when an item was dropped on the map.
     /// </summary>
     /// <param name="item">The item.</param>
@@ -664,11 +724,10 @@ public class MiniGameContext : AsyncDisposable, IEventStateProvider
             return;
         }
 
-        await this.ForEachPlayerAsync(player => player.InvokeViewPlugInAsync<IShowMessagePlugIn>(p =>
-                message.GetTranslation(player.Culture) is { Length: > 0 } translation
-                    ? p.ShowMessageAsync(string.Format(translation, args), MessageType.GoldenCenter)
-                    : ValueTask.CompletedTask)
-            .AsTask()).ConfigureAwait(false);
+        await this.ForEachPlayerAsync(player =>
+            (message.GetTranslation(player.Culture) is { Length: > 0 } translation
+                ? player.ShowWorldMessageAsync(string.Format(translation, args), MessageType.GoldenCenter)
+                : ValueTask.CompletedTask).AsTask()).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -684,7 +743,7 @@ public class MiniGameContext : AsyncDisposable, IEventStateProvider
     /// </param>
     protected async ValueTask ShowGoldenMessageAsync(string messageKey, params object?[] args)
     {
-        await this.ForEachPlayerAsync(player => player.ShowLocalizedGoldenMessageAsync(messageKey, args).AsTask()).ConfigureAwait(false);
+        await this.ForEachPlayerAsync(player => player.ShowWorldMessageAsync(player.GetLocalizedMessage(messageKey, args), MessageType.GoldenCenter).AsTask()).ConfigureAwait(false);
     }
 
     private async ValueTask RunGameAsync(CancellationToken cancellationToken)
@@ -861,7 +920,7 @@ public class MiniGameContext : AsyncDisposable, IEventStateProvider
         // Players which weren't part of the game (e.g. a game master) may still be on the map.
         foreach (var player in this.Map.GetPlayers())
         {
-            await player.WarpToSafezoneAsync().ConfigureAwait(false);
+            await this.MovePlayerToSafezoneAsync(player).ConfigureAwait(false);
         }
 
         await this.Map.TearDownAsync().ConfigureAwait(false);
@@ -873,15 +932,48 @@ public class MiniGameContext : AsyncDisposable, IEventStateProvider
 
         foreach (var player in players)
         {
-            await player.WarpToSafezoneAsync().ConfigureAwait(false);
+            await this.MovePlayerToSafezoneAsync(player).ConfigureAwait(false);
+        }
+    }
 
-            if (player.CurrentMiniGame == this)
+    private async ValueTask MovePlayerToSafezoneAsync(Player player)
+    {
+        try
+        {
+            await player.WarpToSafezoneAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // A disconnected player can reach character selection between map transitions, leaving
+            // neither CurrentMap nor a selected character from which to resolve the safezone. Do not
+            // let that one player abort cleanup of the remaining participants or the event map.
+            this.Logger.LogError(ex, "Couldn't move player {player} out of mini game {context}; detaching it from the event map.", player, this);
+
+            if (this.Map.GetPlayers().Contains(player))
             {
-                // The player wasn't on the map yet, e.g. it just entered or rejoined and its client
-                // didn't acknowledge the map change yet. So it didn't leave the map, which detaches it otherwise.
-                player.CurrentMiniGame = null;
-                player.PlayerPickedUpItem -= this.OnPlayerPickedUpItemAsync;
+                try
+                {
+                    await this.Map.RemoveAsync(player).ConfigureAwait(false);
+                }
+                catch (Exception removeException)
+                {
+                    this.Logger.LogError(removeException, "Couldn't remove player {player} from mini game map {map} during teardown.", player, this.Map);
+                }
             }
+
+            if (player.CurrentMap == this.Map)
+            {
+                player.SetCurrentMapSilently(null);
+            }
+        }
+
+        if (player.CurrentMiniGame == this)
+        {
+            // A player which wasn't on the map yet, e.g. it just entered or rejoined and its client
+            // didn't acknowledge the map change, has no map-removal callback to detach it.
+            player.CurrentMiniGame = null;
+            player.PlayerPickedUpItem -= this.OnPlayerPickedUpItemAsync;
+            player.Died -= this.OnPlayerDied;
         }
     }
 

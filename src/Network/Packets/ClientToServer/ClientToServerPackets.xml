@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <PacketDefinitions xmlns="http://www.munique.net/OpenMU/PacketDefinitions">
   <Description>This file contains all packet definitions for packets which are sent from game client to the game server.</Description>
   <Structures>
@@ -3537,7 +3537,7 @@
       <Code>BF</Code>
       <SubCode>02</SubCode>
       <Name>IllusionTempleSkillRequest</Name>
-      <Length>8</Length>
+      <Length>9</Length>
       <Direction>ClientToServer</Direction>
       <SentWhen>The player is in the illusion temple event and wants to perform a special skill (210 - 213), Order of Protection, Restraint, Tracking or Weaken.</SentWhen>
       <CausedReaction>The server checks if the player is inside the event etc. and performs the skills accordingly.</CausedReaction>
@@ -3549,11 +3549,11 @@
         </Field>
         <Field>
           <Index>6</Index>
-          <Type>Byte</Type>
+          <Type>ShortLittleEndian</Type>
           <Name>TargetObjectIndex</Name>
         </Field>
         <Field>
-          <Index>7</Index>
+          <Index>8</Index>
           <Type>Byte</Type>
           <Name>Distance</Name>
         </Field>

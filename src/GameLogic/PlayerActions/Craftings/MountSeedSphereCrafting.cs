@@ -60,20 +60,32 @@ public class MountSeedSphereCrafting : SimpleItemCraftingHandler
     }
 
     /// <inheritdoc />
-    protected override async ValueTask<List<Item>> CreateOrModifyResultItemsAsync(IList<CraftingRequiredItemLink> requiredItems, Player player, byte socketSlot, byte successRate)
+    protected override CraftingResult? ValidateMix(Player player, IList<CraftingRequiredItemLink> requiredItems, byte socketSlot)
     {
-        var seedSphere = requiredItems.Single(i => i.ItemRequirement.Reference == SeedSphereReference).Items.Single();
         var socketItem = requiredItems.Single(i => i.ItemRequirement.Reference == SocketItemReference).Items.Single();
-
         if (socketItem.SocketCount <= socketSlot)
         {
-            throw new ArgumentException($"The item has no socket at slot {socketSlot}.");
+            player.Logger.LogWarning(
+                "Rejecting seed sphere mount: socket slot {SocketSlot} is outside the item's socket count {SocketCount}.",
+                socketSlot,
+                socketItem.SocketCount);
+            return CraftingResult.LackingMixItems;
         }
 
         if (socketItem.ItemOptions.Any(link => link.Index == socketSlot && link.ItemOption?.OptionType == ItemOptionTypes.SocketOption))
         {
-            throw new ArgumentException("The socket of the item is not free.");
+            player.Logger.LogWarning("Rejecting seed sphere mount: socket slot {SocketSlot} is already occupied.", socketSlot);
+            return CraftingResult.LackingMixItems;
         }
+
+        return null;
+    }
+
+    /// <inheritdoc />
+    protected override async ValueTask<List<Item>> CreateOrModifyResultItemsAsync(IList<CraftingRequiredItemLink> requiredItems, Player player, byte socketSlot, byte successRate)
+    {
+        var seedSphere = requiredItems.Single(i => i.ItemRequirement.Reference == SeedSphereReference).Items.Single();
+        var socketItem = requiredItems.Single(i => i.ItemRequirement.Reference == SocketItemReference).Items.Single();
 
         seedSphere.ThrowNotInitializedProperty(seedSphere.Definition is null, nameof(seedSphere.Definition));
 

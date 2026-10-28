@@ -65,8 +65,8 @@ internal static class InvasionConfigurationDefaults
         Mobs =
         [
             new(InvasionMonsters.WhiteWizard, 1, [InvasionMaps.Lorencia, InvasionMaps.Noria, InvasionMaps.Devias], SpawnMapStrategy.RandomMap, announceDeath: true),
-            new(InvasionMonsters.DestructiveOgreSoldier, 15, [], SpawnMapStrategy.RandomMap),
-            new(InvasionMonsters.DestructiveOgreArcher, 10, [], SpawnMapStrategy.RandomMap),
+            new(InvasionMonsters.DestructiveOgreSoldier, 15, [InvasionMaps.Lorencia, InvasionMaps.Noria, InvasionMaps.Devias], SpawnMapStrategy.RandomMap),
+            new(InvasionMonsters.DestructiveOgreArcher, 10, [InvasionMaps.Lorencia, InvasionMaps.Noria, InvasionMaps.Devias], SpawnMapStrategy.RandomMap),
         ],
     };
 }

@@ -26,6 +26,7 @@ internal sealed class MiniGameChangeEventProcessor
     private readonly Func<MiniGameChangeEvent, ValueTask> _onTerrainChangedAsync;
     private readonly Func<Func<Player, Task>, ValueTask> _forEachPlayerAsync;
     private readonly List<ChangeEventContext> _remainingEvents = new();
+    private readonly List<Task> _pendingChanges = new();
 
     /// <summary>
     /// The terrain changes which were sent to the clients so far, in the order they were applied.
@@ -100,16 +101,30 @@ internal sealed class MiniGameChangeEventProcessor
     /// <param name="killedObject">The killed object.</param>
     public void NotifyKill(IAttackable killedObject)
     {
-        if (this.Current is not { } nextEvent)
+        lock (this._pendingChanges)
         {
-            return;
-        }
+            if (this.Current is not { } nextEvent)
+            {
+                return;
+            }
 
-        if (this.IsKillValid(killedObject, nextEvent.Definition) && nextEvent.RegisterKill())
+            if (this.IsKillValid(killedObject, nextEvent.Definition) && nextEvent.RegisterKill())
+            {
+                this._remainingEvents.Remove(nextEvent);
+                this.UpdateNextEvent();
+                this._pendingChanges.Add(Task.Run(() => this.ApplyChangeEventAsync(nextEvent.Definition, killedObject.LastDeath?.KillerName)));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Waits for the effects of the registered kills before determining the event result.
+    /// </summary>
+    public Task WaitForPendingChangesAsync()
+    {
+        lock (this._pendingChanges)
         {
-            this._remainingEvents.Remove(nextEvent);
-            this.UpdateNextEvent();
-            _ = Task.Run(() => this.ApplyChangeEventAsync(nextEvent.Definition, killedObject.LastDeath?.KillerName));
+            return Task.WhenAll(this._pendingChanges);
         }
     }
 

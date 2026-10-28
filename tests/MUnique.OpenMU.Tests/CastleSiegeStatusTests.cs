@@ -211,6 +211,62 @@ public class CastleSiegeStatusTests
         Assert.That(packet.Result, Is.Zero);
     }
 
+    /// <summary>
+    /// Verifies the original Season 6 battle-mode packet consumed by ReceiveBattleCastleStart.
+    /// </summary>
+    /// <param name="isStarted">Whether the battle is running.</param>
+    [TestCase(false)]
+    [TestCase(true)]
+    public async ValueTask SerializeBattleStateAsync(bool isStarted)
+    {
+        var (player, output) = CastleSiegeRemoteViewTestHelper.CreatePlayer();
+
+        await new CastleSiegeStatusPlugIn(player).ShowBattleStateAsync(isStarted).ConfigureAwait(false);
+
+        Assert.That(output.ToArray(), Is.EqualTo(new byte[] { 0xC1, 5, 0xB2, 0x17, isStarted ? (byte)1 : (byte)0 }));
+    }
+
+    /// <summary>
+    /// Verifies that reused output memory cannot turn a battle-end notification into a nonzero byte.
+    /// </summary>
+    /// <param name="isStarted">Whether the battle is running.</param>
+    [TestCase(false)]
+    [TestCase(true)]
+    public async ValueTask SerializeBattleStateFromDirtyBufferAsync(bool isStarted)
+    {
+        var (player, output) = CastleSiegeRemoteViewTestHelper.CreatePlayer();
+        player.Connection!.Output.GetSpan(5).Fill(0xFE);
+
+        await new CastleSiegeStatusPlugIn(player).ShowBattleStateAsync(isStarted).ConfigureAwait(false);
+
+        Assert.That(output.ToArray(), Is.EqualTo(new byte[] { 0xC1, 5, 0xB2, 0x17, isStarted ? (byte)1 : (byte)0 }));
+    }
+
+    /// <summary>
+    /// Verifies the existing hour/minute packet, including minute ceiling and bounded wire fields.
+    /// </summary>
+    /// <param name="seconds">The remaining battle seconds.</param>
+    /// <param name="hour">The expected hour byte.</param>
+    /// <param name="minute">The expected minute byte.</param>
+    [TestCase(-1d, 0, 0)]
+    [TestCase(0d, 0, 0)]
+    [TestCase(0.001d, 0, 1)]
+    [TestCase(60d, 0, 1)]
+    [TestCase(60.001d, 0, 2)]
+    [TestCase(3599d, 1, 0)]
+    [TestCase(3600d, 1, 0)]
+    [TestCase(5400d, 1, 30)]
+    [TestCase(2147483647d, 255, 59)]
+    public async ValueTask SerializeBattleRemainingTimeAsync(double seconds, byte hour, byte minute)
+    {
+        var (player, output) = CastleSiegeRemoteViewTestHelper.CreatePlayer();
+        player.Connection!.Output.GetSpan(6).Fill(0xFE);
+
+        await new CastleSiegeStatusPlugIn(player).ShowRemainingTimeAsync(TimeSpan.FromSeconds(seconds)).ConfigureAwait(false);
+
+        Assert.That(output.ToArray(), Is.EqualTo(new byte[] { 0xC1, 6, 0xB2, 0x1E, hour, minute }));
+    }
+
     private static async ValueTask<TestFixture> CreateFixtureAsync()
     {
         var persistenceContextProvider = new InMemoryPersistenceContextProvider();

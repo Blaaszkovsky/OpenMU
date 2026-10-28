@@ -161,6 +161,14 @@ entry requirements, ticket items, the spawn waves, rewards and the schedule at
 which they start. The time-of-day entries are interpreted in the time zone
 configured under [System](#system).
 
+The maximum participant count is enforced separately for each event instance.
+The Season 6 defaults allow ten players in Blood Castle and Devil Square, and
+seventy in Chaos Castle. Repeated entry of the same player is rejected before
+another ticket or entrance fee is consumed.
+
+Event announcements are delivered after character entry, including while a
+character is dead. Login and character selection screens do not receive them.
+
 ## Warp list
 
 Route `edit-config-grid/…WarpInfo/`
@@ -187,6 +195,14 @@ The complete game configuration as one editable tree, including all collections
 which the *General* page hides. Everything that has no dedicated page can be
 reached from here — item options, item sets, quests, attributes, magic effects,
 crafting definitions, and so on.
+
+### Seed sphere crafting
+
+Mounting a Seed Sphere requires an existing, empty socket. Removing one requires
+a Seed Sphere in the selected socket. Invalid or occupied mounting slots, and
+removal slots without a Seed Sphere, are rejected before charging Zen or changing
+ingredients. Choose a valid socket and retry with the same items. The configured
+success rate and cost still apply to valid requests.
 
 ## The generic edit pages
 

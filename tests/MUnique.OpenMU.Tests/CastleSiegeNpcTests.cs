@@ -1755,7 +1755,11 @@ public class CastleSiegeNpcTests
         }
     }
 
-    private static async ValueTask<TestFixture> CreateFixtureAsync()
+    /// <summary>
+    /// Creates the shared production NPC fixture for siege and character admission tests.
+    /// </summary>
+    /// <returns>The isolated in-memory Castle Siege fixture.</returns>
+    internal static async ValueTask<TestFixture> CreateFixtureAsync()
     {
         var persistenceContextProvider = new InMemoryPersistenceContextProvider();
         BasicModel.GameConfiguration gameConfiguration;
@@ -2051,7 +2055,8 @@ public class CastleSiegeNpcTests
         fixture.Context.PlayerJoinSides[fixture.Player.SelectedCharacter!.Id] = side;
     }
 
-    private sealed record TestFixture(
+    /// <summary>The shared isolated Castle Siege NPC fixture.</summary>
+    internal sealed record TestFixture(
         InMemoryPersistenceContextProvider PersistenceContextProvider,
         CastleSiegeConfiguration Configuration,
         GameMapDefinition SiegeMap,

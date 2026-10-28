@@ -991,7 +991,7 @@ public sealed class CrywolfContext : IEventStateProvider, IDisposable
         }
         else
         {
-            await this.ForEachMapPlayerAsync(player => player.InvokeViewPlugInAsync<IShowMessagePlugIn>(p => p.ShowMessageAsync(getMessage(player), MessageType.GoldenCenter)).AsTask()).ConfigureAwait(false);
+            await this.ForEachMapPlayerAsync(player => player.ShowWorldMessageAsync(getMessage(player), MessageType.GoldenCenter).AsTask()).ConfigureAwait(false);
         }
     }
 
@@ -1397,7 +1397,7 @@ public sealed class CrywolfContext : IEventStateProvider, IDisposable
             try
             {
                 var message = getMessage(player);
-                await player.InvokeViewPlugInAsync<IShowMessagePlugIn>(p => p.ShowMessageAsync(message, MessageType.GoldenCenter)).ConfigureAwait(false);
+                await player.ShowWorldMessageAsync(message, MessageType.GoldenCenter).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -1414,7 +1414,7 @@ public sealed class CrywolfContext : IEventStateProvider, IDisposable
         return this.ForEachMapPlayerAsync(player =>
         {
             var message = player.GetLocalizedMessage(messageKey, arguments);
-            return player.InvokeViewPlugInAsync<IShowMessagePlugIn>(p => p.ShowMessageAsync(message, MessageType.GoldenCenter)).AsTask();
+            return player.ShowWorldMessageAsync(message, MessageType.GoldenCenter).AsTask();
         });
     }
 

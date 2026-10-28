@@ -4,6 +4,7 @@
 
 namespace MUnique.OpenMU.Tests;
 
+using Moq;
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.DataModel.Entities;
 using MUnique.OpenMU.GameLogic;
@@ -11,6 +12,7 @@ using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameLogic.Crywolf;
 using MUnique.OpenMU.GameLogic.NPC;
 using MUnique.OpenMU.Pathfinding;
+using MUnique.OpenMU.Persistence;
 using MonsterAttribute = MUnique.OpenMU.Persistence.BasicModel.MonsterAttribute;
 using MonsterDefinition = MUnique.OpenMU.Persistence.BasicModel.MonsterDefinition;
 
@@ -21,6 +23,101 @@ using MonsterDefinition = MUnique.OpenMU.Persistence.BasicModel.MonsterDefinitio
 public class CrywolfContextTest
 {
     private static readonly Point AltarPosition = new(125, 27);
+
+    /// <summary>
+    /// Defends the contracted altar through actual army and Balgass deaths, then checks rewards, persistence, and cleanup.
+    /// </summary>
+    [Test]
+    public async Task DefendedBattleRewardsHeroesOnceAndRestoresMapAsync()
+    {
+        var (context, contractor, gameContext) = await CreateContextAsync(configure: definition =>
+        {
+            definition.BalgassAppearanceDelay = TimeSpan.Zero;
+            definition.EndDuration = TimeSpan.Zero;
+            definition.EndCycleDuration = TimeSpan.Zero;
+            definition.MonsterGroups.Add(new CrywolfMonsterGroup { WaveNumber = 1 });
+        }).ConfigureAwait(false);
+        await using var ownedGameContext = gameContext;
+        using var ownedEvent = context;
+        gameContext.StopPeriodicTasks();
+        gameContext.Configuration.MaximumLevel = 400;
+        gameContext.Configuration.ExperienceFormula = "level * 1000000000";
+        await ((IConfigurationChangeMediatorListener)gameContext.ConfigurationChangeMediator).HandleConfigurationChangedAsync(typeof(GameConfiguration), gameContext.Configuration.GetId(), gameContext.Configuration).ConfigureAwait(false);
+        var map = context.Map!;
+        contractor.SelectedCharacter!.Name = "CwElf";
+        var fighter = await PlayerTestHelper.CreatePlayerAsync(gameContext).ConfigureAwait(false);
+        fighter.SelectedCharacter!.Name = "CwFighter";
+        await fighter.PlayerState.TryAdvanceToAsync(PlayerState.EnteredWorld).ConfigureAwait(false);
+        fighter.IsAlive = true;
+        fighter.Position = new Point(110, 79);
+        await map.AddAsync(fighter).ConfigureAwait(false);
+        await gameContext.AddPlayerAsync(contractor).ConfigureAwait(false);
+        await gameContext.AddPlayerAsync(fighter).ConfigureAwait(false);
+        var rewardDefinition = new Persistence.BasicModel.ItemDefinition { Group = 14, Number = 13 };
+        gameContext.Configuration.Items.Add(rewardDefinition);
+        var leaderDefinition = new MonsterDefinition { Id = Guid.NewGuid(), Number = 340, ObjectKind = NpcObjectKind.Monster, AttackDelay = TimeSpan.FromHours(1) };
+        leaderDefinition.Attributes.Add(new MonsterAttribute { AttributeDefinition = Stats.MaximumHealth, Value = 100 });
+        map.Definition.MonsterSpawns.Add(new Persistence.BasicModel.MonsterSpawnArea
+        {
+            MonsterDefinition = leaderDefinition,
+            GameMap = map.Definition,
+            X1 = 110,
+            X2 = 110,
+            Y1 = 78,
+            Y2 = 78,
+            Quantity = 1,
+            SpawnTrigger = SpawnTrigger.OnceAtWaveStart,
+            WaveNumber = 1,
+        });
+        var contractorView = Mock.Get(contractor.ViewPlugIns.GetPlugIn<ICrywolfEventViewPlugIn>()!);
+        var fighterView = Mock.Get(fighter.ViewPlugIns.GetPlugIn<ICrywolfEventViewPlugIn>()!);
+        var contractorExperience = contractor.SelectedCharacter.Experience;
+        var fighterExperience = fighter.SelectedCharacter.Experience;
+
+        await ProceedToAsync(context, CrywolfState.Ready).ConfigureAwait(false);
+        var leader = map.GetNpcsInRange(new Point(110, 78), 1).OfType<Monster>().Single();
+        await context.ContractAltarAsync(contractor, context.Altars[0].Npc.Id).ConfigureAwait(false);
+        await context.TickAsync().ConfigureAwait(false);
+        Assert.That(context.Altars[0].State, Is.EqualTo(CrywolfAltarState.Contracted));
+        await ProceedToAsync(context, CrywolfState.Start).ConfigureAwait(false);
+        await leader.ReflectDamageAsync(fighter, 1000).ConfigureAwait(false);
+        Assert.That(leader.IsAlive, Is.False);
+        await context.TickAsync().ConfigureAwait(false);
+        var balgass = map.GetNpcsInRange(new Point(110, 79), 3).OfType<Monster>().Single(monster => monster.Definition.Number == 349);
+        Assert.That(balgass.IsAlive, Is.True);
+        await balgass.ReflectDamageAsync(fighter, 1000).ConfigureAwait(false);
+        Assert.That(balgass.IsAlive, Is.False);
+        await context.TickAsync().ConfigureAwait(false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(context.State, Is.EqualTo(CrywolfState.End));
+            Assert.That(context.Occupation, Is.EqualTo(CrywolfOccupationState.Peace));
+            Assert.That(context.AreBenefitsApplied, Is.True);
+            Assert.That(map.GetDropsInRange(AltarPosition, byte.MaxValue).OfType<DroppedItem>().Count(item => item.Item.Definition == rewardDefinition), Is.EqualTo(1), "The contractor receives the battle reward.");
+        });
+        contractorView.Verify(view => view.ShowPersonalRankAsync(3, 1_200_000), Times.Once);
+        fighterView.Verify(view => view.ShowPersonalRankAsync(3, 1_200_000), Times.Once);
+        Assert.That(contractor.SelectedCharacter.Experience - contractorExperience, Is.EqualTo(1_200_000));
+        Assert.That(fighter.SelectedCharacter.Experience - fighterExperience, Is.EqualTo(1_200_000));
+        fighterView.Verify(view => view.ShowHeroListAsync(It.Is<IReadOnlyList<CrywolfHero>>(heroes => heroes.Count == 2 && heroes[0].Name == "CwFighter" && heroes[0].Score == 10000 && heroes[1].Name == "CwElf" && heroes[1].Score == 6000)), Times.Once);
+        var data = await LoadDataAsync(gameContext).ConfigureAwait(false);
+        Assert.That(data, Is.Not.Null);
+        Assert.That(data!.IsOccupied, Is.False);
+        Assert.That(data.IsWarRunning, Is.False);
+        Assert.That(data.LastBattleEnd, Is.Not.Null);
+
+        await context.TickAsync().ConfigureAwait(false);
+        Assert.That(context.State, Is.EqualTo(CrywolfState.EndCycle));
+        Assert.That(map.GetNpcsInRange(new Point(110, 79), byte.MaxValue).OfType<Monster>().Any(monster => monster.IsAlive), Is.False);
+        Assert.That(map.GetDropsInRange(AltarPosition, byte.MaxValue).OfType<DroppedItem>().Count(item => item.Item.Definition == rewardDefinition), Is.EqualTo(3), "Each of the two heroes receives one additional reward.");
+        await context.TickAsync().ConfigureAwait(false);
+        await context.TickAsync().ConfigureAwait(false);
+        Assert.That(context.State, Is.EqualTo(CrywolfState.None));
+        Assert.That(map.GetDropsInRange(AltarPosition, byte.MaxValue).OfType<DroppedItem>().Count(item => item.Item.Definition == rewardDefinition), Is.EqualTo(3));
+        contractorView.Verify(view => view.ShowPersonalRankAsync(3, 1_200_000), Times.Once);
+        fighterView.Verify(view => view.ShowPersonalRankAsync(3, 1_200_000), Times.Once);
+    }
 
     /// <summary>
     /// Tests that the battle is lost, when no altar is contracted when it starts, and that the occupation is saved in the database.

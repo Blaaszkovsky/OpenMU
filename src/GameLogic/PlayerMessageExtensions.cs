@@ -14,6 +14,26 @@ using MUnique.OpenMU.Interfaces;
 public static class PlayerMessageExtensions
 {
     /// <summary>
+    /// Shows an announcement only after a character has entered the world.
+    /// </summary>
+    /// <param name="player">The receiving player.</param>
+    /// <param name="message">The announcement.</param>
+    /// <param name="messageType">The presentation of the announcement.</param>
+    /// <returns>The asynchronous send operation.</returns>
+    public static ValueTask ShowWorldMessageAsync(this Player player, string message, MessageType messageType)
+    {
+        var state = player.PlayerState.CurrentState;
+        if (player.SelectedCharacter is null || !player.IsConnected
+            || state == PlayerState.Initial || state == PlayerState.LoginScreen
+            || state == PlayerState.Authenticated || state == PlayerState.CharacterSelection)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        return player.InvokeViewPlugInAsync<IShowMessagePlugIn>(p => p.ShowMessageAsync(message, messageType));
+    }
+
+    /// <summary>
     /// Gets the localized message.
     /// </summary>
     /// <param name="player">The player.</param>

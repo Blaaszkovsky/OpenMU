@@ -187,6 +187,7 @@ public class ItemRules : InitializerBase
         Rule(14, 51, Blocked.Repair), // Chistmas Star
         Rule(14, 52, Blocked.Trade, Blocked.Repair), // GM Gift
         Rule(14, 63, Blocked.Repair), // Firecracker
+        Rule(14, 64, Blocked.Trade, Blocked.Drop, Blocked.Store, Blocked.SellToNpc, Blocked.PersonalStore, Blocked.Repair), // Illusion Temple sacred relic
         Rule(14, 65, Blocked.Trade, Blocked.Drop, Blocked.Store, Blocked.PersonalStore, Blocked.Repair), // Death-beam Knight Flame
         Rule(14, 66, Blocked.Trade, Blocked.Drop, Blocked.Store, Blocked.PersonalStore, Blocked.Repair), // Hell-Miner Horn
         Rule(14, 67, Blocked.Trade, Blocked.Drop, Blocked.Store, Blocked.PersonalStore, Blocked.Repair), // Dark Phoenix Feather

@@ -1,4 +1,4 @@
-# C1 BF 07 - IllusionTempleSkillEnd (by server)
+# C1 BF 09 - IllusionTempleSkillEnd (by server)
 
 ## Is sent when
 
@@ -15,6 +15,6 @@ The client shows the skill points.
 | 0 | 1 |   Byte   | 0xC1  | [Packet type](PacketTypes.md) |
 | 1 | 1 |    Byte   |   6   | Packet header - length of the packet |
 | 2 | 1 |    Byte   | 0xBF  | Packet header - packet type identifier |
-| 3 | 1 |    Byte   | 0x07  | Packet header - sub packet type identifier |
+| 3 | 1 |    Byte   | 0x09  | Packet header - sub packet type identifier |
 | 4 | 1 | Byte |  | TempleNumber |
 | 5 | 1 | Byte |  | State |

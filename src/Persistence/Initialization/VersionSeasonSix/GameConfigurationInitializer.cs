@@ -11,6 +11,7 @@ using MUnique.OpenMU.DataModel.Configuration.Items;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.Persistence.Initialization.CharacterClasses;
 using MUnique.OpenMU.Persistence.Initialization.Items;
+using MUnique.OpenMU.Persistence.Initialization.Updates;
 using MUnique.OpenMU.Persistence.Initialization.VersionSeasonSix.Events;
 using MUnique.OpenMU.Persistence.Initialization.VersionSeasonSix.Items;
 using MUnique.OpenMU.Persistence.Initialization.VersionSeasonSix.Monsters;
@@ -95,6 +96,7 @@ public class GameConfigurationInitializer : GameConfigurationInitializerBase
         new DevilSquareInitializer(this.Context, this.GameConfiguration).Initialize();
         new BloodCastleInitializer(this.Context, this.GameConfiguration).Initialize();
         new ChaosCastleInitializer(this.Context, this.GameConfiguration).Initialize();
+        new IllusionTempleInitializer(this.Context, this.GameConfiguration).Initialize();
         new CastleSiegeInitializer(this.Context, this.GameConfiguration).Initialize();
         new KanturuInitializer(this.Context, this.GameConfiguration).Initialize();
         new DoppelgangerInitializer(this.Context, this.GameConfiguration).Initialize();
@@ -113,16 +115,13 @@ public class GameConfigurationInitializer : GameConfigurationInitializerBase
     /// </summary>
     private void WireRenaDropToEventMaps()
     {
-        var renaDropGroup = this.GameConfiguration.DropItemGroups
-            .FirstOrDefault(g => g.PossibleItems.Any(i => i.Group == 14 && i.Number == 21));
+        var renaDropGroup = AddRenaItemUpdatePlugIn.FindPlainRenaDropGroup(this.GameConfiguration);
         if (renaDropGroup is null)
         {
             return;
         }
 
-        var eventMaps = this.GameConfiguration.Maps
-            .Where(m => m.Name.Value?.StartsWith("Blood Castle") is true || m.Name.Value is "Devil Square 5" or "Devil Square 6" or "Devil Square 7");
-        foreach (var map in eventMaps)
+        foreach (var map in AddRenaItemUpdatePlugIn.GetDefaultEventMaps(this.GameConfiguration))
         {
             if (!map.DropItemGroups.Contains(renaDropGroup))
             {

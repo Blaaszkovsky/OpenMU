@@ -19,7 +19,7 @@ The client shows the results.
 | 4 | 1 | Byte |  | Team1Points |
 | 5 | 1 | Byte |  | Team2Points |
 | 6 | 1 | Byte |  | PlayerCount |
-| 10 | PlayerResult.Length * PlayerCount | Array of PlayerResult |  | Players |
+| 7 | PlayerResult.Length * PlayerCount | Array of PlayerResult |  | Players |
 
 ### PlayerResult Structure
 

@@ -4446,7 +4446,7 @@ public static class ConnectionExtensions
     /// Is sent by the client when: The player is in the illusion temple event and wants to perform a special skill (210 - 213), Order of Protection, Restraint, Tracking or Weaken.
     /// Causes reaction on server side: The server checks if the player is inside the event etc. and performs the skills accordingly.
     /// </remarks>
-    public static async ValueTask SendIllusionTempleSkillRequestAsync(this IConnection? connection, ushort @skillNumber, byte @targetObjectIndex, byte @distance)
+    public static async ValueTask SendIllusionTempleSkillRequestAsync(this IConnection? connection, ushort @skillNumber, ushort @targetObjectIndex, byte @distance)
     {
         if (connection is null)
         {

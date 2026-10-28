@@ -396,4 +396,6 @@
   <data name="AddBaskiPrototypeUpdatePlugIn_Description" xml:space="preserve"><value>Adds the Ferea hunting monsters and the provisional Baski spawn. Boss encounter units are defined without automatic spawns.</value></data>
   <data name="ConfigureCastleSiegeGuardTalkPlugInsUpdatePlugIn_Name" xml:space="preserve"><value>Configure Castle Siege guards</value></data>
   <data name="ConfigureCastleSiegeGuardTalkPlugInsUpdatePlugIn_Description" xml:space="preserve"><value>The guardsmen at the bridge of the Castle Siege map open the registration window, and the guard at the Land of Trials entrance becomes a passive NPC which opens the Land of Trials dialog.</value></data>
+  <data name="AddIllusionTempleDataUpdatePlugIn_Name" xml:space="preserve"><value>Add Illusion Temple data</value></data>
+  <data name="AddIllusionTempleDataUpdatePlugIn_Description" xml:space="preserve"><value>Adds Season 6 Illusion Temple events and replaces obsolete seeded Renewal NPCs without replacing owner event settings.</value></data>
 </root>

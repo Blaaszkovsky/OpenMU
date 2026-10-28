@@ -17,6 +17,11 @@ using System.Threading;
 /// </remarks>
 public sealed class ActorProtocolHandler
 {
+    private static readonly HashSet<string> DevilSquareEntryActors = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "gda06", "gda07", "gda10", "gda11", "gdb06", "gdb07", "gdb10", "gdb11",
+    };
+
     private readonly IActorRegistry _registry;
     private readonly BotsController _bots;
 
@@ -195,6 +200,18 @@ public sealed class ActorProtocolHandler
     private async ValueTask DispatchActorCommandAsync(string command, JsonElement request, string? id, Func<string, ValueTask> writer, CancellationToken cancellationToken)
     {
         var loginName = GetString(request, "actor") ?? string.Empty;
+        if (command == "enterDS7" && !HasOnlyProperties(request, "id", "cmd", "actor"))
+        {
+            await WriteFailureAsync(writer, id, ActorErrorCodes.BadRequest, "The enterDS7 command accepts only cmd, id, and actor.").ConfigureAwait(false);
+            return;
+        }
+
+        if (command == "enterDS7" && !DevilSquareEntryActors.Contains(loginName))
+        {
+            await WriteFailureAsync(writer, id, ActorErrorCodes.NotAuthorized, "This actor is not approved for the R12 Devil Square cohort.").ConfigureAwait(false);
+            return;
+        }
+
         if (await this._registry.FindAsync(loginName).ConfigureAwait(false) is not { } actor)
         {
             await WriteFailureAsync(writer, id, ActorErrorCodes.UnknownActor, $"No actor animates '{loginName}'.").ConfigureAwait(false);
@@ -233,6 +250,7 @@ public sealed class ActorProtocolHandler
     {
         ActorCommand? actorCommand = command switch
         {
+            "enterDS7" => new EnterDevilSquareCommand(),
             "walk" => new WalkCommand(GetByte(request, "x") ?? 0, GetByte(request, "y") ?? 0),
             "attack" => new AttackCommand(
                 GetTarget(request) ?? string.Empty,
@@ -258,6 +276,12 @@ public sealed class ActorProtocolHandler
         }
 
         await WriteResultAsync(writer, id, await intelligence.ExecuteAsync(actorCommand).ConfigureAwait(false)).ConfigureAwait(false);
+    }
+
+    private static bool HasOnlyProperties(JsonElement request, params string[] propertyNames)
+    {
+        var allowed = new HashSet<string>(propertyNames, StringComparer.Ordinal);
+        return request.EnumerateObject().All(property => allowed.Contains(property.Name));
     }
 
     private async ValueTask StreamEventsAsync(ScriptedPlayer actor, JsonElement request, string? id, Func<string, ValueTask> writer, CancellationToken cancellationToken)

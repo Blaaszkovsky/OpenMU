@@ -229,6 +229,11 @@ public static class CastleSiegeCrownMechanics
     /// <returns>A task that represents the asynchronous broadcast.</returns>
     internal static async ValueTask BroadcastOwnershipChangeAsync(CastleSiegeContext context, string guildName)
     {
+        if (string.IsNullOrWhiteSpace(guildName))
+        {
+            return;
+        }
+
         await context.ForEachSiegePlayerAsync(async player =>
         {
             await player.InvokeViewPlugInAsync<ICastleSiegeOwnershipChangePlugIn>(

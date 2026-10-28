@@ -14142,7 +14142,7 @@ public readonly struct IllusionTempleSkillRequest
     /// <summary>
     /// Gets the initial length of this data packet. When the size is dynamic, this value may be bigger than actually needed.
     /// </summary>
-    public static int Length => 8;
+    public static int Length => 9;
 
     /// <summary>
     /// Gets the header of this packet.
@@ -14161,10 +14161,10 @@ public readonly struct IllusionTempleSkillRequest
     /// <summary>
     /// Gets or sets the target object index.
     /// </summary>
-    public byte TargetObjectIndex
+    public ushort TargetObjectIndex
     {
-        get => this._data.Span[6];
-        set => this._data.Span[6] = value;
+        get => ReadUInt16LittleEndian(this._data.Span[6..]);
+        set => WriteUInt16LittleEndian(this._data.Span[6..], value);
     }
 
     /// <summary>
@@ -14172,8 +14172,8 @@ public readonly struct IllusionTempleSkillRequest
     /// </summary>
     public byte Distance
     {
-        get => this._data.Span[7];
-        set => this._data.Span[7] = value;
+        get => this._data.Span[8];
+        set => this._data.Span[8] = value;
     }
 
     /// <summary>

@@ -3179,7 +3179,7 @@ public class PacketStructureTests
     public void IllusionTempleSkillRequest_PacketSizeValidation()
     {
         // Fixed-length packet validation
-        const int expectedLength = 8;
+        const int expectedLength = 9;
         var actualLength = IllusionTempleSkillRequestRef.Length;
         
         Assert.That(actualLength, Is.EqualTo(expectedLength), 
@@ -3190,11 +3190,11 @@ public class PacketStructureTests
             "Field 'SkillNumber' exceeds packet boundary");
         
         // Validate field 'TargetObjectIndex' boundary
-        Assert.That(6 + 1, Is.LessThanOrEqualTo(expectedLength), 
+        Assert.That(6 + 2, Is.LessThanOrEqualTo(expectedLength), 
             "Field 'TargetObjectIndex' exceeds packet boundary");
         
         // Validate field 'Distance' boundary
-        Assert.That(7 + 1, Is.LessThanOrEqualTo(expectedLength), 
+        Assert.That(8 + 1, Is.LessThanOrEqualTo(expectedLength), 
             "Field 'Distance' exceeds packet boundary");
     }
 

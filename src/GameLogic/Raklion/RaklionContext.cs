@@ -642,10 +642,10 @@ public sealed class RaklionContext : IEventStateProvider, IDisposable
             try
             {
                 var message = getMessage(player);
-                await player.InvokeViewPlugInAsync<IShowMessagePlugIn>(p => p.ShowMessageAsync(message, MessageType.GoldenCenter)).ConfigureAwait(false);
+                await player.ShowWorldMessageAsync(message, MessageType.GoldenCenter).ConfigureAwait(false);
                 if (showInChat)
                 {
-                    await player.ShowBlueMessageAsync(message).ConfigureAwait(false);
+                    await player.ShowWorldMessageAsync(message, MessageType.BlueNormal).ConfigureAwait(false);
                 }
             }
             catch (Exception ex)

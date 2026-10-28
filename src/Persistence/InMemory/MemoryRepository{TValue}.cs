@@ -14,6 +14,8 @@ using System.Threading;
 public class MemoryRepository<TValue> : IRepository<TValue>, IMemoryRepository
     where TValue : class
 {
+    private readonly Lock _lock = new();
+
     private readonly List<Guid> _createdObjects = new();
     private readonly IDictionary<Guid, TValue> _values = new Dictionary<Guid, TValue>();
 
@@ -24,8 +26,11 @@ public class MemoryRepository<TValue> : IRepository<TValue>, IMemoryRepository
     /// <param name="obj">The item.</param>
     public void Add(Guid key, TValue obj)
     {
-        this._values.TryAdd(key, obj);
-        this._createdObjects.Add(key);
+        lock (this._lock)
+        {
+            this._values.TryAdd(key, obj);
+            this._createdObjects.Add(key);
+        }
     }
 
     /// <inheritdoc />
@@ -52,28 +57,34 @@ public class MemoryRepository<TValue> : IRepository<TValue>, IMemoryRepository
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        this._values.TryGetValue(id, out var obj);
-        return ValueTask.FromResult(obj);
+        lock (this._lock)
+        {
+            this._values.TryGetValue(id, out var obj);
+            return ValueTask.FromResult(obj);
+        }
     }
 
     /// <inheritdoc/>
     public void OnSaveChanges()
     {
-        foreach (var oldObjId in this._createdObjects)
+        lock (this._lock)
         {
-            if (this._values.TryGetValue(oldObjId, out var obj)
-                && obj.GetId() is var currentId
-                && currentId != oldObjId)
+            foreach (var oldObjId in this._createdObjects)
             {
-                this._values.Remove(oldObjId);
-                if (!this._values.TryAdd(currentId, obj))
+                if (this._values.TryGetValue(oldObjId, out var obj)
+                    && obj.GetId() is var currentId
+                    && currentId != oldObjId)
                 {
-                    throw new InvalidOperationException($"Duplicate ID {currentId}. Existing: {this._values[currentId]}, Wanted to add: {obj}");
+                    this._values.Remove(oldObjId);
+                    if (!this._values.TryAdd(currentId, obj))
+                    {
+                        throw new InvalidOperationException($"Duplicate ID {currentId}. Existing: {this._values[currentId]}, Wanted to add: {obj}");
+                    }
                 }
             }
-        }
 
-        this._createdObjects.Clear();
+            this._createdObjects.Clear();
+        }
     }
 
     /// <inheritdoc/>
@@ -85,27 +96,35 @@ public class MemoryRepository<TValue> : IRepository<TValue>, IMemoryRepository
     /// <inheritdoc/>
     public ValueTask<bool> DeleteAsync(object obj)
     {
-        var key = this._values.Where(kvp => kvp.Value.Equals(obj)).Select(kvp => kvp.Key).FirstOrDefault();
-        return ValueTask.FromResult(this._values.Remove(key));
+        lock (this._lock)
+        {
+            var key = this._values.Where(kvp => kvp.Value.Equals(obj)).Select(kvp => kvp.Key).FirstOrDefault();
+            return ValueTask.FromResult(this._values.Remove(key));
+        }
     }
 
     /// <inheritdoc/>
     public ValueTask<bool> DeleteAsync(Guid id)
     {
-        return ValueTask.FromResult(this._values.Remove(id));
+        lock (this._lock)
+        {
+            return ValueTask.FromResult(this._values.Remove(id));
+        }
     }
 
     /// <inheritdoc/>
-    public async ValueTask<IEnumerable<TValue>> GetAllAsync(CancellationToken cancellationToken = default)
+    public ValueTask<IEnumerable<TValue>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return this._values.Values.Cast<TValue>();
+        lock (this._lock)
+        {
+            return ValueTask.FromResult<IEnumerable<TValue>>(this._values.Values.ToList());
+        }
     }
 
     /// <inheritdoc/>
     async ValueTask<IEnumerable> IRepository.GetAllAsync(CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        return this._values.Values;
+        return await this.GetAllAsync(cancellationToken).ConfigureAwait(false);
     }
 }

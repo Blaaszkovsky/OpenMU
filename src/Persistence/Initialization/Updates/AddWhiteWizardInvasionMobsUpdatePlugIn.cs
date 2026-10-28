@@ -5,10 +5,12 @@
 namespace MUnique.OpenMU.Persistence.Initialization.Updates;
 
 using System.Runtime.InteropServices;
+using System.Text.Json.Nodes;
 using MUnique.OpenMU.AttributeSystem;
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Attributes;
+using MUnique.OpenMU.GameLogic.PlugIns.InvasionEvents;
 using MUnique.OpenMU.Persistence.Initialization.Skills;
 using MUnique.OpenMU.PlugIns;
 
@@ -16,6 +18,7 @@ using MUnique.OpenMU.PlugIns;
 /// Adds the White Wizard invasion monsters (135-137) and their drop groups
 /// to existing databases where <see cref="VersionSeasonSix.InvasionMobsInitialization"/>
 /// has already run but before White Wizard monsters were defined.
+/// Repairs empty helper map lists in existing invasion settings.
 /// </summary>
 [PlugIn]
 [Display(Name = nameof(MUnique.OpenMU.Persistence.Initialization.Properties.PlugInResources.AddWhiteWizardInvasionMobsUpdatePlugIn_Name), Description = nameof(MUnique.OpenMU.Persistence.Initialization.Properties.PlugInResources.AddWhiteWizardInvasionMobsUpdatePlugIn_Description), ResourceType = typeof(MUnique.OpenMU.Persistence.Initialization.Properties.PlugInResources))]
@@ -48,8 +51,15 @@ public class AddWhiteWizardInvasionMobsUpdatePlugIn : UpdatePlugInBase
     public override DateTime CreatedAt => new(2026, 07, 05, 0, 0, 0, DateTimeKind.Utc);
 
     /// <inheritdoc />
+    public override int Version => 2;
+
+    /// <inheritdoc />
+    public override DateTime UpdatedAt => new(2026, 10, 24, 0, 0, 0, DateTimeKind.Utc);
+
+    /// <inheritdoc />
     protected override ValueTask ApplyAsync(IContext context, GameConfiguration gameConfiguration)
     {
+        RepairHelperMaps(gameConfiguration);
         if (gameConfiguration.Monsters.Any(m => m.Number == 135))
         {
             return ValueTask.CompletedTask;
@@ -61,6 +71,51 @@ public class AddWhiteWizardInvasionMobsUpdatePlugIn : UpdatePlugInBase
 
         return ValueTask.CompletedTask;
     }
+
+    private static void RepairHelperMaps(GameConfiguration gameConfiguration)
+    {
+        var configuration = gameConfiguration.PlugInConfigurations.FirstOrDefault(plugIn => plugIn.TypeId == typeof(WhiteWizardInvasionPlugIn).GUID);
+        if (configuration is null || string.IsNullOrWhiteSpace(configuration.CustomConfiguration))
+        {
+            return;
+        }
+
+        // Patch only map values so reference metadata and unknown owner settings survive the update.
+        var settings = JsonNode.Parse(configuration.CustomConfiguration) as JsonObject;
+        var mobs = GetArray(settings?[nameof(PeriodicInvasionConfiguration.Mobs)]);
+        var wizard = mobs?.OfType<JsonObject>().FirstOrDefault(mob =>
+            mob[nameof(InvasionSpawnConfiguration.MonsterId)] is JsonValue number && number.TryGetValue<ushort>(out var id) && id == 135);
+        var sourceMaps = GetArray(wizard?[nameof(InvasionSpawnConfiguration.MapIds)]);
+        if (mobs is null || sourceMaps is not { Count: > 0 }
+            || sourceMaps.Any(map => map is not JsonValue number || !number.TryGetValue<ushort>(out _)))
+        {
+            return;
+        }
+
+        var changed = false;
+        foreach (var helper in mobs.OfType<JsonObject>().Where(mob =>
+                     mob[nameof(InvasionSpawnConfiguration.MonsterId)] is JsonValue number && number.TryGetValue<ushort>(out var id) && id is 136 or 137))
+        {
+            if (GetArray(helper[nameof(InvasionSpawnConfiguration.MapIds)]) is not { Count: 0 } maps)
+            {
+                continue;
+            }
+
+            foreach (var map in sourceMaps)
+            {
+                maps.Add(map!.DeepClone());
+            }
+
+            changed = true;
+        }
+
+        if (changed)
+        {
+            configuration.CustomConfiguration = settings!.ToJsonString();
+        }
+    }
+
+    private static JsonArray? GetArray(JsonNode? node) => node as JsonArray ?? (node as JsonObject)?["$values"] as JsonArray;
 
     private void AddWhiteWizard(IContext context, GameConfiguration gameConfiguration)
     {

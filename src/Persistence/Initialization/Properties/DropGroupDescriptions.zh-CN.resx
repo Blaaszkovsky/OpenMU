@@ -237,4 +237,7 @@
   <data name="BaskiWingsOfUnity" xml:space="preserve">
     <value>巴斯基：实验性团结之翼</value>
   </data>
+  <data name="SignOfLord" xml:space="preserve">
+    <value>城主标志（+3）</value>
+  </data>
 </root>

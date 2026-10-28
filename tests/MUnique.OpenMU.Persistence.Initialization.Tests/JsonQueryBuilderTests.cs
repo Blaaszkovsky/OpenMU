@@ -7,8 +7,10 @@ namespace MUnique.OpenMU.Persistence.Initialization.Tests;
 using System.Diagnostics;
 using System.IO;
 using Microsoft.EntityFrameworkCore;
+using MUnique.OpenMU.Interfaces;
 using MUnique.OpenMU.Persistence.EntityFramework;
 using MUnique.OpenMU.Persistence.EntityFramework.Json;
+using MUnique.OpenMU.PlugIns;
 using Account = MUnique.OpenMU.Persistence.EntityFramework.Model.Account;
 using GameConfiguration = MUnique.OpenMU.Persistence.EntityFramework.Model.GameConfiguration;
 
@@ -82,12 +84,15 @@ internal class JsonQueryBuilderTests
 
     /// <summary>
     /// Loads the <see cref="GameConfiguration"/> using the <see cref="JsonQueryBuilder"/> and the <see cref="JsonObjectLoader"/>.
-    /// It always fails, because it reports the taken time.
+    /// It loads and verifies the installed configuration, while reporting the query time for diagnostics.
     /// </summary>
     [Test]
     [Ignore("It hits the database.")]
     public async Task LoadConfigByJsonAsync()
     {
+        JsonConverterRegistry.RegisterConverter(new LocalizedStringJsonConverter());
+        JsonConverterRegistry.RegisterConverter(new BinaryAsHexJsonConverter());
+
         await using var installationContext = new ConfigurationContext();
         installationContext.Database.OpenConnection();
         var builder = new GameConfigurationJsonObjectLoader();
@@ -106,6 +111,6 @@ internal class JsonQueryBuilderTests
 
         Assert.That(result, Is.Not.Null);
         Assert.That(result.Count, Is.Not.EqualTo(0));
-        Assert.That(stopwatch.ElapsedMilliseconds, Is.EqualTo(0));
+        TestContext.Progress.WriteLine($"Game configuration JSON load completed in {stopwatch.ElapsedMilliseconds} ms.");
     }
 }

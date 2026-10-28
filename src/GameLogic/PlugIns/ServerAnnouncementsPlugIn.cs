@@ -7,7 +7,6 @@ namespace MUnique.OpenMU.GameLogic.PlugIns;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
-using MUnique.OpenMU.GameLogic.Views;
 using MUnique.OpenMU.PlugIns;
 
 /// <summary>
@@ -60,7 +59,7 @@ public class ServerAnnouncementsPlugIn : IPeriodicTaskPlugIn, ISupportCustomConf
                 return Task.CompletedTask;
             }
 
-            return player.InvokeViewPlugInAsync<IShowMessagePlugIn>(p => p.ShowMessageAsync(text, announcement.Type)).AsTask();
+            return player.ShowWorldMessageAsync(text, announcement.Type).AsTask();
         }).ConfigureAwait(false);
     }
 

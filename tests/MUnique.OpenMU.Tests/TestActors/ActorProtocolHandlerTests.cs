@@ -71,6 +71,26 @@ public class ActorProtocolHandlerTests
     }
 
     /// <summary>
+    /// The R12 entry adapter is fixed to the prepared eight-actor cohort and accepts no
+    /// caller-controlled level, inventory slot, map, or generic mini-game fields.
+    /// </summary>
+    [TestCase("""{"cmd":"enterDS7","actor":"gda00"}""", "not_authorized")]
+    [TestCase("""{"cmd":"enterDS7","actor":"gda06","level":7}""", "bad_request")]
+    [TestCase("""{"cmd":"enterDS7","actor":"gda06","slot":12}""", "bad_request")]
+    [TestCase("""{"cmd":"enterDS7","actor":"gda06","map":30}""", "bad_request")]
+    public async Task EnterDevilSquareRejectsForeignActorsAndTunableFieldsAsync(string line, string expectedCode)
+    {
+        var registry = new Mock<IActorRegistry>(MockBehavior.Strict);
+        var lines = new ResponseCollector();
+        var handler = new ActorProtocolHandler(registry.Object, CreateBotsController());
+
+        await handler.HandleLineAsync(line, lines.WriteAsync, CancellationToken.None).ConfigureAwait(false);
+
+        Assert.That(lines.Single().GetProperty("code").GetString(), Is.EqualTo(expectedCode));
+        registry.Verify(r => r.FindAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    /// <summary>
     /// A numeric field outside its range is refused as <c>bad_request</c> - never wrapped into a
     /// plausible-looking value, and never even reaching the registry or the actor.
     /// </summary>

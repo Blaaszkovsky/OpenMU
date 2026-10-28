@@ -27221,8 +27221,8 @@ public readonly struct IllusionTempleState
     /// </summary>
     public ushort PlayerIndex
     {
-        get => ReadUInt16LittleEndian(this._data.Span[4..]);
-        set => WriteUInt16LittleEndian(this._data.Span[4..], value);
+        get => ReadUInt16LittleEndian(this._data.Span[6..]);
+        set => WriteUInt16LittleEndian(this._data.Span[6..], value);
     }
 
     /// <summary>
@@ -27230,8 +27230,8 @@ public readonly struct IllusionTempleState
     /// </summary>
     public byte PositionX
     {
-        get => this._data.Span[6];
-        set => this._data.Span[6] = value;
+        get => this._data.Span[8];
+        set => this._data.Span[8] = value;
     }
 
     /// <summary>
@@ -27239,8 +27239,8 @@ public readonly struct IllusionTempleState
     /// </summary>
     public byte PositionY
     {
-        get => this._data.Span[7];
-        set => this._data.Span[7] = value;
+        get => this._data.Span[9];
+        set => this._data.Span[9] = value;
     }
 
     /// <summary>
@@ -27248,8 +27248,8 @@ public readonly struct IllusionTempleState
     /// </summary>
     public byte Team1Points
     {
-        get => this._data.Span[8];
-        set => this._data.Span[8] = value;
+        get => this._data.Span[10];
+        set => this._data.Span[10] = value;
     }
 
     /// <summary>
@@ -27257,8 +27257,8 @@ public readonly struct IllusionTempleState
     /// </summary>
     public byte Team2Points
     {
-        get => this._data.Span[9];
-        set => this._data.Span[9] = value;
+        get => this._data.Span[11];
+        set => this._data.Span[11] = value;
     }
 
     /// <summary>
@@ -27266,8 +27266,8 @@ public readonly struct IllusionTempleState
     /// </summary>
     public byte MyTeam
     {
-        get => this._data.Span[10];
-        set => this._data.Span[10] = value;
+        get => this._data.Span[12];
+        set => this._data.Span[12] = value;
     }
 
     /// <summary>
@@ -27275,14 +27275,14 @@ public readonly struct IllusionTempleState
     /// </summary>
     public byte PartyCount
     {
-        get => this._data.Span[11];
-        set => this._data.Span[11] = value;
+        get => this._data.Span[13];
+        set => this._data.Span[13] = value;
     }
 
     /// <summary>
     /// Gets the <see cref="IllusionTemplePartyEntry"/> of the specified index.
     /// </summary>
-        public IllusionTemplePartyEntry this[int index] => new (this._data.Slice(12 + index * IllusionTemplePartyEntry.Length));
+        public IllusionTemplePartyEntry this[int index] => new (this._data.Slice(14 + index * IllusionTemplePartyEntry.Length));
 
     /// <summary>
     /// Performs an implicit conversion from a Memory of bytes to a <see cref="IllusionTempleState"/>.
@@ -27303,7 +27303,7 @@ public readonly struct IllusionTempleState
     /// </summary>
     /// <param name="partyMembersCount">The count of <see cref="IllusionTemplePartyEntry"/> from which the size will be calculated.</param>
         
-    public static int GetRequiredSize(int partyMembersCount) => partyMembersCount * IllusionTemplePartyEntry.Length + 12;
+    public static int GetRequiredSize(int partyMembersCount) => partyMembersCount * IllusionTemplePartyEntry.Length + 14;
 
 
 /// <summary>
@@ -27339,10 +27339,10 @@ public readonly struct IllusionTemplePartyEntry
     /// <summary>
     /// Gets or sets the map number.
     /// </summary>
-    public ushort MapNumber
+    public byte MapNumber
     {
-        get => ReadUInt16LittleEndian(this._data.Span[2..]);
-        set => WriteUInt16LittleEndian(this._data.Span[2..], value);
+        get => this._data.Span[2];
+        set => this._data.Span[2] = value;
     }
 
     /// <summary>
@@ -27696,7 +27696,7 @@ public readonly struct IllusionTempleResult
     /// <summary>
     /// Gets the <see cref="PlayerResult"/> of the specified index.
     /// </summary>
-        public PlayerResult this[int index] => new (this._data.Slice(10 + index * PlayerResult.Length));
+        public PlayerResult this[int index] => new (this._data.Slice(7 + index * PlayerResult.Length));
 
     /// <summary>
     /// Performs an implicit conversion from a Memory of bytes to a <see cref="IllusionTempleResult"/>.
@@ -27717,7 +27717,7 @@ public readonly struct IllusionTempleResult
     /// </summary>
     /// <param name="playersCount">The count of <see cref="PlayerResult"/> from which the size will be calculated.</param>
         
-    public static int GetRequiredSize(int playersCount) => playersCount * PlayerResult.Length + 10;
+    public static int GetRequiredSize(int playersCount) => playersCount * PlayerResult.Length + 7;
 
 
 /// <summary>
@@ -28138,7 +28138,7 @@ public readonly struct IllusionTempleSkillEnd
     /// Gets the operation sub-code of this data packet.
     /// The <see cref="Code" /> is used as a grouping key.
     /// </summary>
-    public static byte SubCode => 0x07;
+    public static byte SubCode => 0x09;
 
     /// <summary>
     /// Gets the initial length of this data packet. When the size is dynamic, this value may be bigger than actually needed.

@@ -2058,4 +2058,5 @@
   <data name="ArcaneWingsWizard" xml:space="preserve">
     <value>Arkane Flügel (Magier)</value>
   </data>
+  <data name="IllusionTempleRelic" xml:space="preserve"><value>Relikt des Illusionstempels</value></data>
 </root>

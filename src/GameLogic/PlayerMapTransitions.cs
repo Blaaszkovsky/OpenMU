@@ -220,6 +220,14 @@ internal sealed class PlayerMapTransitions
     /// </summary>
     public async ValueTask ClientReadyAfterMapChangeAsync()
     {
+        if (this._player.SelectedCharacter is null)
+        {
+            // A delayed F3:12 from the previous world entry can arrive after the client
+            // returned to character selection. It is no longer a map-entry request.
+            this._player.Logger.LogDebug("Ignoring client-ready packet because the player has no selected character.");
+            return;
+        }
+
         var player = this._player;
         player.ThrowNotInitializedProperty(player.SelectedCharacter is null, nameof(player.SelectedCharacter));
         player.SelectedCharacter.ThrowNotInitializedProperty(player.SelectedCharacter.CurrentMap is null, nameof(player.SelectedCharacter.CurrentMap));
@@ -261,7 +269,14 @@ internal sealed class PlayerMapTransitions
             player.SelectedCharacter.PositionY = spawnPosition.Y;
         }
 
-        await player.CurrentMap!.AddAsync(player).ConfigureAwait(false);
+        var enteredMap = player.CurrentMap!;
+        await enteredMap.AddAsync(player).ConfigureAwait(false);
+        if (player.SelectedCharacter is null || player.CurrentMap != enteredMap)
+        {
+            // An admission callback may have disconnected or moved the player after Map.Add.
+            return;
+        }
+
         if (!player.CurrentMap.Terrain.WalkMap[player.SelectedCharacter.PositionX, player.SelectedCharacter.PositionY]
             && await this.RecoverFromBlockedSpawnAsync().ConfigureAwait(false))
         {

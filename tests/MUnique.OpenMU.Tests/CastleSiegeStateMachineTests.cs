@@ -342,6 +342,8 @@ public class CastleSiegeStateMachineTests
         context.ActiveNpcs.Add(CreateNpcRuntime(277, 0, 125_000, true, true));
         context.ActiveNpcs.Add(CreateNpcRuntime(283, 0, 0, true, false));
         context.ActiveNpcs.Add(CreateNpcRuntime(216, 0, 1_000, false, true));
+        fixture.CastleSiegeConfiguration.NpcDefinitions.Add(context.ActiveNpcs[0].Definition);
+        fixture.CastleSiegeConfiguration.NpcDefinitions.Add(context.ActiveNpcs[1].Definition);
 
         await context.SaveNpcStatesAsync().ConfigureAwait(false);
 
@@ -398,6 +400,80 @@ public class CastleSiegeStateMachineTests
         {
             Assert.That(savedState.Id, Is.EqualTo(gateStateId));
             Assert.That(savedState.CurrentHp, Is.EqualTo(250_000));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that missing configured runtime keys cannot overwrite or delete saved NPC states.
+    /// </summary>
+    /// <param name="replaceMissingKey">Whether an unrelated runtime key replaces the missing key.</param>
+    [TestCase(false)]
+    [TestCase(true)]
+    public async ValueTask ContextPreservesNpcStatesForMissingRuntimeKeyAsync(bool replaceMissingKey)
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        var gateStateId = await AddNpcStateAsync(fixture, 277, 0, 250_000).ConfigureAwait(false);
+        var statueStateId = await AddNpcStateAsync(fixture, 283, 0, 300_000).ConfigureAwait(false);
+        var gate = CreateNpcRuntime(277, 0, 125_000, true, true);
+        fixture.CastleSiegeConfiguration.NpcDefinitions.Add(gate.Definition);
+        fixture.CastleSiegeConfiguration.NpcDefinitions.Add(CreateNpcRuntime(283, 0, 0, true, false).Definition);
+        var context = new CastleSiegeContext(fixture.GameContext.Object, fixture.CastleSiegeConfiguration);
+        await context.InitializeAsync(new DateTime(2026, 8, 3, 12, 0, 0, DateTimeKind.Utc)).ConfigureAwait(false);
+        context.ActiveNpcs.Clear();
+        context.ActiveNpcs.Add(gate);
+        if (replaceMissingKey)
+        {
+            context.ActiveNpcs.Add(CreateNpcRuntime(283, 1, 0, true, false));
+        }
+
+        await context.SaveNpcStatesAsync().ConfigureAwait(false);
+
+        using var persistenceContext = fixture.PersistenceContextProvider.CreateNewTypedContext(
+            typeof(CastleSiegeData),
+            false,
+            fixture.GameConfiguration);
+        var savedStates = (await persistenceContext.GetAsync<CastleSiegeData>().ConfigureAwait(false)).Single().NpcStates;
+        Assert.That(savedStates, Has.Count.EqualTo(2));
+        Assert.Multiple(() =>
+        {
+            var savedGate = savedStates.Single(state => state.MonsterNumber == 277);
+            var savedStatue = savedStates.Single(state => state.MonsterNumber == 283);
+            Assert.That(savedGate.Id, Is.EqualTo(gateStateId));
+            Assert.That(savedGate.CurrentHp, Is.EqualTo(250_000));
+            Assert.That(savedStatue.Id, Is.EqualTo(statueStateId));
+            Assert.That(savedStatue.InstanceId, Is.Zero);
+            Assert.That(savedStatue.CurrentHp, Is.EqualTo(300_000));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a complete current configuration can still remove an obsolete saved NPC state.
+    /// </summary>
+    [Test]
+    public async ValueTask ContextRemovesNpcStateRemovedFromConfigurationAsync()
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        var gateStateId = await AddNpcStateAsync(fixture, 277, 0, 250_000).ConfigureAwait(false);
+        await AddNpcStateAsync(fixture, 283, 0, 300_000).ConfigureAwait(false);
+        var gate = CreateNpcRuntime(277, 0, 125_000, true, true);
+        fixture.CastleSiegeConfiguration.NpcDefinitions.Add(gate.Definition);
+        var context = new CastleSiegeContext(fixture.GameContext.Object, fixture.CastleSiegeConfiguration);
+        await context.InitializeAsync(new DateTime(2026, 8, 3, 12, 0, 0, DateTimeKind.Utc)).ConfigureAwait(false);
+        context.ActiveNpcs.Clear();
+        context.ActiveNpcs.Add(gate);
+
+        await context.SaveNpcStatesAsync().ConfigureAwait(false);
+
+        using var persistenceContext = fixture.PersistenceContextProvider.CreateNewTypedContext(
+            typeof(CastleSiegeData),
+            false,
+            fixture.GameConfiguration);
+        var savedState = (await persistenceContext.GetAsync<CastleSiegeData>().ConfigureAwait(false)).Single().NpcStates.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(savedState.Id, Is.EqualTo(gateStateId));
+            Assert.That(savedState.MonsterNumber, Is.EqualTo(277));
+            Assert.That(savedState.CurrentHp, Is.EqualTo(125_000));
         });
     }
 
@@ -683,6 +759,7 @@ public class CastleSiegeStateMachineTests
         await plugIn.ExecuteTaskAsync(fixture.GameContext.Object).ConfigureAwait(false);
         var context = plugIn.GetContext(fixture.GameContext.Object)!;
         context.ActiveNpcs.Add(CreateNpcRuntime(277, 1, 500, true, true));
+        fixture.CastleSiegeConfiguration.NpcDefinitions.Add(context.ActiveNpcs.Single().Definition);
 
         timeProvider.Advance(TimeSpan.FromMinutes(2));
         await plugIn.ExecuteTaskAsync(fixture.GameContext.Object).ConfigureAwait(false);
@@ -844,9 +921,9 @@ public class CastleSiegeStateMachineTests
     {
         return new CastleSiegeNpcRuntime
         {
-            Definition = new CastleSiegeNpcDefinition
+            Definition = new MUnique.OpenMU.Persistence.BasicModel.CastleSiegeNpcDefinition
             {
-                MonsterDefinition = new MonsterDefinition { Number = monsterNumber },
+                MonsterDefinition = new MUnique.OpenMU.Persistence.BasicModel.MonsterDefinition { Number = monsterNumber },
                 InstanceId = instanceId,
                 IsPersistedToDatabase = isPersisted,
             },
