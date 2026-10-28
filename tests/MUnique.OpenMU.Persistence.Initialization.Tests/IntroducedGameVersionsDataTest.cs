@@ -92,9 +92,25 @@ internal class IntroducedGameVersionsDataTest
         Assert.That(gameConfiguration.Items.Single(i => i.Group == 14 && i.Number == 42).IntroducedIn, Is.EqualTo(GameVersion.Season2)); // Jewel of Harmony
         Assert.That(gameConfiguration.MiniGameDefinitions.Single(m => m.Type == MiniGameType.BloodCastle && m.GameLevel == 8).IntroducedIn, Is.EqualTo(GameVersion.Season3Episode1));
 
-        Assert.That(gameConfiguration.Maps.Select(m => m.IntroducedIn), Has.None.EqualTo(GameVersion.Unknown));
+        Assert.That(gameConfiguration.Maps.Single(m => m.Number == VersionSeasonSix.Maps.Ferea.Number).IntroducedIn, Is.EqualTo(GameVersion.Unknown));
+        Assert.That(gameConfiguration.Maps.Where(m => m.Number != VersionSeasonSix.Maps.Ferea.Number).Select(m => m.IntroducedIn), Has.None.EqualTo(GameVersion.Unknown));
         Assert.That(gameConfiguration.CharacterClasses.Select(c => c.IntroducedIn), Has.None.EqualTo(GameVersion.Unknown));
         Assert.That(gameConfiguration.MiniGameDefinitions.Select(m => m.IntroducedIn), Has.None.EqualTo(GameVersion.Unknown));
+    }
+
+    /// <summary>The event and its map must become available in the same original game version.</summary>
+    /// <param name="level">The event bracket.</param>
+    /// <param name="mapNumber">The corresponding map number.</param>
+    [TestCase(1, 45)]
+    [TestCase(2, 46)]
+    [TestCase(3, 47)]
+    [TestCase(4, 48)]
+    [TestCase(5, 49)]
+    [TestCase(6, 50)]
+    public void IllusionTempleVersionMatchesItsMap(byte level, short mapNumber)
+    {
+        var miniGame = this._season6.MiniGameDefinitions.Single(game => game.Type == MiniGameType.IllusionTemple && game.GameLevel == level);
+        Assert.That(miniGame.IntroducedIn, Is.EqualTo(IntroducedGameVersions.Maps[(mapNumber, 0)]));
     }
 
     /// <summary>
@@ -135,9 +151,12 @@ internal class IntroducedGameVersionsDataTest
         lorencia.IntroducedIn = GameVersion.Season1;
 
         var update = new SetIntroducedGameVersionsPlugInSeason6();
+        var installed = (await context.GetAsync<ConfigurationUpdate>().ConfigureAwait(false)).Single(entry => entry.Key == update.Key);
+        installed.Version = 1;
         await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
         await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
 
+        Assert.That(installed.Version, Is.EqualTo(2));
         Assert.That(lorencia.IntroducedIn, Is.EqualTo(GameVersion.Season1));
         Assert.That(
             gameConfiguration.Maps.Where(m => m != lorencia).Select(m => (m.Number, m.Discriminator, m.IntroducedIn)),

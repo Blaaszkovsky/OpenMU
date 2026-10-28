@@ -18,4 +18,10 @@ public class SetIntroducedGameVersionsPlugInSeason6 : SetIntroducedGameVersionsP
 {
     /// <inheritdoc />
     public override string DataInitializationKey => VersionSeasonSix.DataInitialization.Id;
+
+    /// <inheritdoc />
+    public override int Version => 2;
+
+    /// <inheritdoc />
+    public override DateTime UpdatedAt => new(2026, 10, 28, 0, 0, 0, DateTimeKind.Utc);
 }
