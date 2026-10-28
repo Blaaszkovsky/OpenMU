@@ -53,6 +53,7 @@ with `-adminpanel:disabled`.
 | [Servers](servers.md) | Start/stop listeners, player counts, add servers, global messages |
 | [Accounts](accounts.md) | Search, create, ban and edit accounts |
 | [Online accounts](online-accounts.md) | Who is logged in, disconnect players, offline sessions |
+| [Leaderboards](#leaderboards) | The best characters of Blood Castle, Devil Square, Chaos Castle and the other mini games |
 | [Game configuration](game-configuration.md) | Everything about the game world: system settings, items, monsters, skills, maps, drops, … |
 | [Plugins](plugins.md) | Activate, deactivate and configure plugins |
 | [Chat commands](chat-commands.md) | Which in-game commands exist and who may use them |
@@ -105,6 +106,23 @@ reachable, and the number of available [configuration updates](configuration-upd
 The numbers of accounts, guilds and characters are counted when the page is
 opened; reload the page to update them.
 
+## Leaderboards
+
+The *Leaderboards* page ranks the characters by their results in the mini games,
+like Blood Castle, Devil Square and Chaos Castle. There is a tab for each mini
+game type, and all levels of a type (e.g. Blood Castle 1 to 8) are combined.
+
+For each character it shows the sum of the scores, the best score of a single
+game and the number of played games, ordered by the sum of the scores. The
+period can be limited to the last 7 or 30 days. The 100 best characters are
+shown; characters of bots and template accounts are not ranked.
+
+A mini game only has a leaderboard when it saves its results: enable
+*Save Ranking Statistics* of the mini game definition in the
+[game configuration](game-configuration.md). In a freshly initialized database,
+this is the case for Blood Castle, Devil Square and Chaos Castle. Agents read
+the same leaderboards with the `minigames_leaderboard` [MCP tool](mcp.md).
+
 ## A note about the edit pages
 
 To be able to edit most of the data without writing SQL, there are **generic edit
@@ -128,7 +146,7 @@ Some parts of the panel depend on how the server is hosted:
 | Logs | [Log files page](logs-and-monitoring.md#log-files-all-in-one) inside the panel | Links to Grafana for logs, metrics and traces |
 | Live map | Rendered by the panel itself | Reverse-proxied from the game server container |
 | Dashboard | Shows the castle siege and the global message | Without the castle siege and the global message; uptime and memory are the ones of the admin panel container |
-| Auto start / auto schema update | Applies | Ignored — listeners always start, schema updates are started manually |
+| Auto start / auto schema update | Applies | Ignored — listeners always start, schema and mandatory configuration updates are started manually |
 | After an installation | Ready immediately | The connect server and game server containers have to be restarted |
 
 ## Planned

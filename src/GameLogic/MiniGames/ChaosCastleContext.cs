@@ -531,10 +531,11 @@ public sealed class ChaosCastleContext : MiniGameContext
         var requiredMonsters = MaxObjectsCount - this.PlayerCount;
 
         this.Logger.LogDebug("{0}: Spawning {1} monsters...", this.Definition.Description, requiredMonsters);
-        var spawnAreas = this.Map.Definition.MonsterSpawns.AsList();
-        this.DropGenerator = new ChaosCastleDropGenerator(this._gameContext, this, requiredMonsters);
+        var spawnAreas = this.Map.Definition.MonsterSpawns.Where(area => area.MonsterDefinition is { IsActive: true }).ToList();
+        var monsterCount = Math.Min(requiredMonsters, spawnAreas.Count);
+        this.DropGenerator = new ChaosCastleDropGenerator(this._gameContext, this, monsterCount);
 
-        for (var i = 0; i < requiredMonsters && i < spawnAreas.Count; i++)
+        for (var i = 0; i < monsterCount; i++)
         {
             var spawnArea = spawnAreas[i];
 
