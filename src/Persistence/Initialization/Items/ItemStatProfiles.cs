@@ -261,14 +261,18 @@ internal static class ItemStatProfiles
         foreach (var terms in profile.StatTerms)
         {
             var copy = context.CreateNew<ItemStatTerms>();
+            var id = copy.GetId();
             copy.AssignValuesOf(terms, gameConfiguration);
+            copy.SetGuid(id);
             variant.StatTerms.Add(copy);
         }
 
         foreach (var formula in profile.RequirementFormulas)
         {
             var copy = context.CreateNew<ItemRequirementFormula>();
+            var id = copy.GetId();
             copy.AssignValuesOf(formula, gameConfiguration);
+            copy.SetGuid(id);
             variant.RequirementFormulas.Add(copy);
         }
 

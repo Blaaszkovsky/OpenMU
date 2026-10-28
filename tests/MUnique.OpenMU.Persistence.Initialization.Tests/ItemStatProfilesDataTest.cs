@@ -411,6 +411,8 @@ internal class ItemStatProfilesDataTest
         var afterFirstUpdate = Describe(gameConfiguration);
         await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
 
+        await context.SaveChangesAsync().ConfigureAwait(false);
+
         var profile = GetProfile(gameConfiguration, BuiltInItemStatProfiles.ThirdTierWing);
         var variantName = BuiltInItemStatProfiles.ThirdTierWing + "2";
         var expectedVariant = DescribeProfile(profile)
@@ -457,6 +459,8 @@ internal class ItemStatProfilesDataTest
             }));
             Assert.That(DescribePowerUpTables(gameConfiguration), Is.EqualTo(powerUpTables));
             Assert.That(GetTablesWhichDifferFromTheProfile(gameConfiguration), Is.Empty);
+            Assert.That(gameConfiguration.ItemStatProfiles.SelectMany(p => p.StatTerms).Select(t => t.GetId()), Is.Unique);
+            Assert.That(gameConfiguration.ItemStatProfiles.SelectMany(p => p.RequirementFormulas).Select(f => f.GetId()), Is.Unique);
         });
     }
 
