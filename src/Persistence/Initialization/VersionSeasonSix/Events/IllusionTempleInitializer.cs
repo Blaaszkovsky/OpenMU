@@ -202,6 +202,7 @@ internal class IllusionTempleInitializer : InitializerBase
         definition.Description = MiniGameDescriptions.ResourceManager.GetLocalizedString("IllusionTempleEvent");
         definition.Type = MiniGameType.IllusionTemple;
         definition.GameLevel = level;
+        definition.IntroducedIn = IntroducedGameVersions.MiniGames[(MiniGameType.IllusionTemple, level)];
         definition.MinimumCharacterLevel = definition.MinimumSpecialCharacterLevel = bracket.Minimum;
         definition.MaximumCharacterLevel = definition.MaximumSpecialCharacterLevel = bracket.Maximum;
         definition.RequiresMasterClass = level == 6;

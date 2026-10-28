@@ -169,6 +169,9 @@ internal class IllusionTempleConfigurationTests
     {
         var (context, configuration) = await TestGameConfiguration.CreateSeason6Async().ConfigureAwait(false);
         using var _ = context;
+        var versions = (await context.GetAsync<ConfigurationUpdate>().ConfigureAwait(false))
+            .Single(installed => installed.Key == typeof(SetIntroducedGameVersionsPlugInSeason6).GUID);
+        Assert.That(versions.Version, Is.EqualTo(2));
         foreach (var definition in configuration.MiniGameDefinitions.Where(definition => definition.Type == MiniGameType.IllusionTemple).ToList())
         {
             configuration.MiniGameDefinitions.Remove(definition);
@@ -234,6 +237,8 @@ internal class IllusionTempleConfigurationTests
         Assert.Multiple(() =>
         {
             Assert.That(definitions, Has.Length.EqualTo(6));
+            Assert.That(definitions.Select(definition => definition.IntroducedIn),
+                Is.EqualTo(definitions.Select(definition => IntroducedGameVersions.MiniGames[(definition.Type, definition.GameLevel)])));
             Assert.That(configuration.Items.Count(item => item.Group == 14 && item.Number == 64), Is.EqualTo(1));
             Assert.That(spawns.Any(spawn => spawn.MonsterDefinition?.Number is >= 658 and <= 668), Is.False);
             Assert.That(maps.All(map => map.MonsterSpawns.Count == 6), Is.True);
