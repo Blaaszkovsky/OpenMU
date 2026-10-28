@@ -204,7 +204,7 @@ internal class ItemStatProfilesDataTest
         {
             "armor: 274",
             "book: 3",
-            "default: 173",
+            "default: 174",
             "firstTierWing: 4",
             "helper: 27",
             "orb: 12",
@@ -214,7 +214,7 @@ internal class ItemStatProfilesDataTest
             "secondTierWing: 5",
             "shield: 22",
             "smallWing: 6",
-            "thirdTierWing: 7",
+            "thirdTierWing: 10",
             "weapon: 113",
         }));
     }
@@ -267,6 +267,9 @@ internal class ItemStatProfilesDataTest
             ("shield", Create(6, 200, handSlots), BuiltInItemStatProfiles.Shield),
             ("copied helm", Create(7, 200, helmSlot), BuiltInItemStatProfiles.Armor),
             ("second wing", Create(12, 3, wingsSlot), BuiltInItemStatProfiles.SecondTierWing),
+            ("unity wing", Create(12, 245, wingsSlot), BuiltInItemStatProfiles.ThirdTierWing),
+            ("fearless wing", Create(12, 248, wingsSlot), BuiltInItemStatProfiles.ThirdTierWing),
+            ("arcane wing", Create(12, 249, wingsSlot), BuiltInItemStatProfiles.ThirdTierWing),
             ("unknown wing", Create(12, 200, wingsSlot), ItemStatProfile.DefaultName),
             ("orb", Create(12, 201, null, null, (Stats.TotalEnergy, 100, null)), BuiltInItemStatProfiles.Orb),
             ("jewel", Create(12, 202, null), ItemStatProfile.DefaultName),
@@ -459,8 +462,6 @@ internal class ItemStatProfilesDataTest
             }));
             Assert.That(DescribePowerUpTables(gameConfiguration), Is.EqualTo(powerUpTables));
             Assert.That(GetTablesWhichDifferFromTheProfile(gameConfiguration), Is.Empty);
-            Assert.That(gameConfiguration.ItemStatProfiles.SelectMany(p => p.StatTerms).Select(t => t.GetId()), Is.Unique);
-            Assert.That(gameConfiguration.ItemStatProfiles.SelectMany(p => p.RequirementFormulas).Select(f => f.GetId()), Is.Unique);
         });
     }
 
@@ -530,6 +531,51 @@ internal class ItemStatProfilesDataTest
             Assert.That(differentTables, Has.Exactly(1).Items);
             Assert.That(differentTables, Has.All.Contains("Own maximum damage increase of one sword"));
             Assert.That(DescribePowerUpTables(gameConfiguration), Is.EqualTo(powerUpTables));
+        });
+    }
+
+    /// <summary>
+    /// Tests that a custom default-profile variant copies both terms and requirement formulas into distinct persisted rows.
+    /// </summary>
+    [Test]
+    public async Task DefaultProfileVariantKeepsDistinctIdentitiesWhenSavedAsync()
+    {
+        var (context, gameConfiguration) = await CreateAsync(Season6).ConfigureAwait(false);
+        using var _ = context;
+        var wing = context.CreateNew<ItemDefinition>();
+        wing.Group = 12;
+        wing.Number = 200;
+        wing.ItemSlot = gameConfiguration.ItemSlotTypes.First(type => type.ItemSlots.Contains(InventoryConstants.WingsSlot));
+        var powerUp = context.CreateNew<ItemBasePowerUpDefinition>();
+        powerUp.TargetAttribute = Stats.DefenseBase;
+        powerUp.BonusPerLevelTable = AddTable(context, gameConfiguration, "Own defense bonus of an unknown wing");
+        wing.BasePowerUpAttributes.Add(powerUp);
+        gameConfiguration.Items.Add(wing);
+
+        RemoveProfiles(gameConfiguration);
+        var update = CreateUpdate(Season6);
+        await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
+        var source = GetProfile(gameConfiguration, ItemStatProfile.DefaultName);
+        var termIds = source.StatTerms.Select(term => term.GetId()).ToList();
+        var formulaIds = source.RequirementFormulas.Select(formula => formula.GetId()).ToList();
+        Assert.Multiple(() =>
+        {
+            Assert.That(wing.StatProfile!.Name, Is.EqualTo("default2"));
+            Assert.That(wing.StatProfile.StatTerms, Is.Not.Empty);
+            Assert.That(wing.StatProfile.RequirementFormulas, Is.Not.Empty);
+            Assert.That(wing.StatProfile.StatTerms.Select(term => term.GetId()).Intersect(termIds), Is.Empty);
+            Assert.That(wing.StatProfile.RequirementFormulas.Select(formula => formula.GetId()).Intersect(formulaIds), Is.Empty);
+        });
+
+        await context.SaveChangesAsync().ConfigureAwait(false);
+        var expected = Describe(gameConfiguration);
+        await update.ApplyUpdateAsync(context, gameConfiguration).ConfigureAwait(false);
+        await context.SaveChangesAsync().ConfigureAwait(false);
+        Assert.Multiple(() =>
+        {
+            Assert.That(Describe(gameConfiguration), Is.EqualTo(expected));
+            Assert.That(source.StatTerms.Select(term => term.GetId()), Is.EqualTo(termIds));
+            Assert.That(source.RequirementFormulas.Select(formula => formula.GetId()), Is.EqualTo(formulaIds));
         });
     }
 

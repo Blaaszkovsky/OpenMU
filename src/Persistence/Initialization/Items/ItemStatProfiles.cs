@@ -318,7 +318,7 @@ internal static class ItemStatProfiles
             ((byte)ItemGroups.Orbs, >= 0 and <= 2 or 41) => BuiltInItemStatProfiles.FirstTierWing,
             ((byte)ItemGroups.Orbs, 49) or ((byte)ItemGroups.Misc1, 30) => BuiltInItemStatProfiles.SecondTierCape,
             ((byte)ItemGroups.Orbs, >= 3 and <= 6 or 42) => BuiltInItemStatProfiles.SecondTierWing,
-            ((byte)ItemGroups.Orbs, >= 36 and <= 40 or 43 or 50) => BuiltInItemStatProfiles.ThirdTierWing,
+            ((byte)ItemGroups.Orbs, >= 36 and <= 40 or 43 or 50 or 245 or 248 or 249) => BuiltInItemStatProfiles.ThirdTierWing,
             _ => ItemStatProfile.DefaultName,
         };
     }
