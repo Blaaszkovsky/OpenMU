@@ -962,12 +962,13 @@ public class CastleSiegeCrownMechanicsTests
                 100,
                 100)
             .ConfigureAwait(false);
-        fixture.Context.MiddleOwnerGuildId = AttackGuildId;
         fixture.Context.SiegeData.TaxChaos = 3;
         fixture.Context.SiegeData.TaxStore = 3;
         fixture.Context.SiegeData.TaxHunt = 300_000;
         fixture.Context.SiegeData.TributeMoney = 6_000;
         fixture.Context.SiegeData.IsHuntZoneEnabled = true;
+        await CastleSiegeCrownMechanics.ChangeWinnerGuildAsync(fixture.Context, observer, CastleSiegeJoinSide.Attack1).ConfigureAwait(false);
+        Mock.Get(observer.ViewPlugIns.GetPlugIn<ICastleSiegeOwnershipChangePlugIn>()!).Invocations.Clear();
 
         await CastleSiegeCrownMechanics
             .CheckResultAsync(fixture.Context)

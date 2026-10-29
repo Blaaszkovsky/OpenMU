@@ -6,6 +6,7 @@ namespace MUnique.OpenMU.GameLogic.CastleSiege;
 
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.GameLogic.CastleSiege.NPC;
+using MUnique.OpenMU.Persistence;
 
 /// <summary>
 /// Provides serialized administrative operations and read-only status snapshots for one Castle Siege plug-in.
@@ -157,10 +158,19 @@ public sealed class CastleSiegeAdministration
                 return CastleSiegeAdministrationResult.Failed(CastleSiegeAdministrationError.OwnerChangeDuringBattle);
             }
 
-            ownershipChanged = CastleSiegeCrownMechanics.ApplyOwner(context, guildId.Value);
-            if (ownershipChanged)
+            var previous = context.CaptureOwnerState();
+            try
             {
-                await context.SaveOwnerAsync().ConfigureAwait(false);
+                ownershipChanged = CastleSiegeCrownMechanics.ApplyOwner(context, guildId.Value);
+                if (ownershipChanged)
+                {
+                    await context.SaveOwnerAsync().ConfigureAwait(false);
+                }
+            }
+            catch (PersistenceConflictException)
+            {
+                context.RestoreOwnerState(previous);
+                throw;
             }
         }
         finally

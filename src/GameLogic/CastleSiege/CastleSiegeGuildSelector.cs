@@ -50,10 +50,14 @@ public static class CastleSiegeGuildSelector
     /// <returns>A task that represents the asynchronous selection operation.</returns>
     public static async ValueTask SelectGuildsAsync(CastleSiegeContext context)
     {
+        await context.SelectGuildsAsync(() => SelectGuildsCoreAsync(context)).ConfigureAwait(false);
+    }
+
+    private static async ValueTask SelectGuildsCoreAsync(CastleSiegeContext context)
+    {
         context.FinalGuildList.Clear();
         if (context.GameContext is not IGameServerContext gameServerContext)
         {
-            await context.SaveFinalGuildListAsync().ConfigureAwait(false);
             return;
         }
 
@@ -132,7 +136,6 @@ public static class CastleSiegeGuildSelector
         }
 
         context.InitializeBattleOwner();
-        await context.SaveFinalGuildListAsync().ConfigureAwait(false);
     }
 
     private static CastleSiegeGuildParticipant CreateParticipant(

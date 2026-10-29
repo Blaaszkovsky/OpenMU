@@ -7,6 +7,7 @@ namespace MUnique.OpenMU.GameLogic.CastleSiege.Actions;
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.GameLogic.CastleSiege.NPC;
 using MUnique.OpenMU.GameLogic.Views.CastleSiege;
+using MUnique.OpenMU.Persistence;
 
 /// <summary>
 /// Upgrades Castle Siege gates and Guardian Statues.
@@ -106,24 +107,17 @@ public static class CastleSiegeNpcUpgradeAction
                 return CastleSiegeNpcOperationResult.RequirementNotMet;
             }
 
+            var previousMoney = player.Money;
             if (!player.TryRemoveMoney(upgrade.RequiredZen))
             {
                 return CastleSiegeNpcOperationResult.InsufficientMoney;
             }
 
-            foreach (var jewel in jewels)
-            {
-                await player.DestroyInventoryItemAsync(jewel).ConfigureAwait(false);
-            }
-
+            context.NpcController.SynchronizeNpcStates();
+            var previousHealth = state.CurrentHp;
             var oldMaximumHealth = context.NpcController.GetMaximumHealth(runtime);
             SetLevel(state, upgradeType, requestedLevel);
-            if (runtime.SpawnedInstance is CastleSiegeAttackableNpc structure)
-            {
-                structure.ApplyPersistedUpgrades(true);
-                state.CurrentHp = structure.Health;
-            }
-            else if (upgradeType == CastleSiegeUpgradeType.Life)
+            if (upgradeType == CastleSiegeUpgradeType.Life)
             {
                 var newMaximumHealth = context.NpcController.GetMaximumHealth(runtime);
                 var adjustedHealth = (long)state.CurrentHp + newMaximumHealth - oldMaximumHealth;
@@ -134,7 +128,29 @@ public static class CastleSiegeNpcUpgradeAction
                 // Defense and regeneration upgrades do not alter the persisted health of an unspawned structure.
             }
 
-            await context.SaveNpcStatesAsync().ConfigureAwait(false);
+            try
+            {
+                await context.SaveNpcStateMutationAsync(runtime).ConfigureAwait(false);
+            }
+            catch (PersistenceConflictException)
+            {
+                SetLevel(state, upgradeType, currentLevel);
+                state.CurrentHp = previousHealth;
+                player.Money = previousMoney;
+                throw;
+            }
+
+            // A rejected save leaves jewels and the spawned object's attributes untouched.
+            foreach (var jewel in jewels)
+            {
+                await player.DestroyInventoryItemAsync(jewel).ConfigureAwait(false);
+            }
+
+            if (runtime.SpawnedInstance is CastleSiegeAttackableNpc structure)
+            {
+                structure.ApplyPersistedUpgrades(true);
+            }
+
             return CastleSiegeNpcOperationResult.Success;
         }
         finally

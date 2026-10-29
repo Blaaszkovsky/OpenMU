@@ -27,6 +27,7 @@ using MUnique.OpenMU.GameServer.MessageHandler.CastleSiege;
 using MUnique.OpenMU.GameServer.RemoteView.World;
 using MUnique.OpenMU.Interfaces;
 using MUnique.OpenMU.Pathfinding;
+using MUnique.OpenMU.Persistence;
 using MUnique.OpenMU.Persistence.InMemory;
 using MUnique.OpenMU.PlugIns;
 using AddNpcsToScopePacket = MUnique.OpenMU.Network.Packets.ServerToClient.AddNpcsToScope;
@@ -44,6 +45,180 @@ public class CastleSiegeNpcTests
     private const byte StatueInstanceId = 1;
     private const byte GateX = 50;
     private const byte GateY = 50;
+
+    /// <summary>
+    /// Verifies that a known noncommitting NPC save rejection cannot charge the player or publish a successful mutation.
+    /// </summary>
+    /// <param name="operation">The requested operation.</param>
+    /// <param name="spawned">Whether the defense structure is already deployed.</param>
+    [TestCase("repair", false)]
+    [TestCase("repair", true)]
+    [TestCase("buy", false)]
+    [TestCase("upgrade", false)]
+    [TestCase("upgrade", true)]
+    public async ValueTask RejectedNpcSaveRestoresWalletItemsAndRuntimeAsync(string operation, bool spawned)
+    {
+        var fixture = await CreateFixtureAsync(true).ConfigureAwait(false);
+        try
+        {
+            if (spawned)
+            {
+                await fixture.Context.NpcController.PrepareAsync().ConfigureAwait(false);
+            }
+
+            var runtime = fixture.Context.NpcController.FindDefenseStructure((uint)CastleSiegeGate.MonsterNumber, GateInstanceId)!;
+            var state = runtime.PersistedState!;
+            state.CurrentHp = operation == "buy" ? 0 : 900;
+            runtime.IsAlive = operation != "buy";
+            if (runtime.SpawnedInstance is CastleSiegeAttackableNpc structure)
+            {
+                structure.Health = state.CurrentHp;
+            }
+
+            fixture.Player.Money = 10_000;
+            await AddGuardianJewelsAsync(fixture, 2).ConfigureAwait(false);
+            var jewelIds = fixture.Player.Inventory!.Items.Select(item => ((MUnique.OpenMU.Persistence.IIdentifiable)item).Id).ToArray();
+            var originalInstance = runtime.SpawnedInstance;
+            var originalHealth = state.CurrentHp;
+            var originalAlive = runtime.IsAlive;
+            var view = Mock.Get(fixture.Player.ViewPlugIns.GetPlugIn<ICastleSiegeNpcOperationResultPlugIn>()!);
+
+            Assert.ThrowsAsync<PersistenceConflictException>(async () =>
+            {
+                if (operation == "repair")
+                {
+                    await CastleSiegeNpcRepairAction.RepairAsync(fixture.Player, fixture.Context, (uint)CastleSiegeGate.MonsterNumber, GateInstanceId).ConfigureAwait(false);
+                }
+                else if (operation == "buy")
+                {
+                    await CastleSiegeNpcBuyAction.BuyAsync(fixture.Player, fixture.Context, (uint)CastleSiegeGate.MonsterNumber, GateInstanceId).ConfigureAwait(false);
+                }
+                else
+                {
+                    await CastleSiegeNpcUpgradeAction.UpgradeAsync(fixture.Player, fixture.Context, (uint)CastleSiegeGate.MonsterNumber, GateInstanceId, CastleSiegeUpgradeType.Life, 1).ConfigureAwait(false);
+                }
+            });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(fixture.Player.Money, Is.EqualTo(10_000));
+                Assert.That(fixture.Player.Inventory.Items.Select(item => ((MUnique.OpenMU.Persistence.IIdentifiable)item).Id), Is.EquivalentTo(jewelIds));
+                Assert.That(state.CurrentHp, Is.EqualTo(originalHealth));
+                Assert.That(state.LifeLevel, Is.Zero);
+                Assert.That(runtime.IsAlive, Is.EqualTo(originalAlive));
+                Assert.That(runtime.SpawnedInstance, Is.SameAs(originalInstance));
+                if (runtime.SpawnedInstance is CastleSiegeAttackableNpc after)
+                {
+                    Assert.That(after.Health, Is.EqualTo(originalHealth));
+                    Assert.That(after.MaximumHealth, Is.EqualTo(1_000));
+                }
+
+                Assert.That(view.Invocations, Is.Empty, "A rejected save must not publish an operation success.");
+            });
+        }
+        finally
+        {
+            await fixture.Context.NpcController.DespawnAllAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verifies that a real stale-health validation rejection refunds repair without healing the local or persisted gate.
+    /// </summary>
+    [Test]
+    public async ValueTask StaleRepairRequestPreservesWalletAndConcurrentKillAsync()
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        try
+        {
+            var runtime = fixture.Context.NpcController.FindDefenseStructure((uint)CastleSiegeGate.MonsterNumber, GateInstanceId)!;
+            runtime.PersistedState!.CurrentHp = 900;
+            fixture.Player.Money = 1_000;
+            using var read = fixture.PersistenceContextProvider.CreateNewContext();
+            var persisted = (await read.GetAsync<CastleSiegeData>().ConfigureAwait(false)).Single();
+            persisted.NpcStates.Single(state => state.MonsterNumber == CastleSiegeGate.MonsterNumber).CurrentHp = 0;
+
+            Assert.ThrowsAsync<PersistenceConflictException>(async () => await CastleSiegeNpcRepairAction
+                .RepairAsync(fixture.Player, fixture.Context, (uint)CastleSiegeGate.MonsterNumber, GateInstanceId).ConfigureAwait(false));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(fixture.Player.Money, Is.EqualTo(1_000));
+                Assert.That(runtime.PersistedState.CurrentHp, Is.EqualTo(900));
+                Assert.That(runtime.SpawnedInstance, Is.Null);
+                Assert.That(persisted.NpcStates.Single(state => state.MonsterNumber == CastleSiegeGate.MonsterNumber).CurrentHp, Is.Zero);
+            });
+        }
+        finally
+        {
+            await fixture.Context.NpcController.DespawnAllAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verifies that a live definition edit cannot turn an incomplete snapshot into a successful paid operation.
+    /// </summary>
+    /// <param name="upgrade">Whether a life upgrade is requested instead of a repair.</param>
+    [TestCase(false)]
+    [TestCase(true)]
+    public async ValueTask IncompleteNpcSnapshotRejectsManagementWithoutChargingAsync(bool upgrade)
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        try
+        {
+            await fixture.Context.NpcController.PrepareAsync().ConfigureAwait(false);
+            var runtime = fixture.Context.NpcController.FindDefenseStructure((uint)CastleSiegeGate.MonsterNumber, GateInstanceId)!;
+            var gate = (CastleSiegeGate)runtime.SpawnedInstance!;
+            gate.Health = 900;
+            runtime.PersistedState!.CurrentHp = 900;
+            fixture.Player.Money = 10_000;
+            await AddGuardianJewelsAsync(fixture, 2).ConfigureAwait(false);
+            var jewels = fixture.Player.Inventory!.Items.ToArray();
+            var otherDefinition = fixture.Configuration.NpcDefinitions.Single(definition => definition.MonsterDefinition?.Number == CastleSiegeStatue.MonsterNumber);
+            Assert.That(fixture.Context.Configuration, Is.SameAs(fixture.Configuration));
+            var removedId = ((MUnique.OpenMU.Persistence.IIdentifiable)otherDefinition).Id;
+            Assert.That(removedId, Is.Not.EqualTo(Guid.Empty));
+            Assert.That(fixture.Configuration.NpcDefinitions.Remove(otherDefinition), Is.True);
+            Assert.That(fixture.Configuration.NpcDefinitions.Any(definition => ((MUnique.OpenMU.Persistence.IIdentifiable)definition).Id == removedId), Is.False);
+            Assert.That(fixture.Context.Configuration.NpcDefinitions.Count(definition => definition.IsPersistedToDatabase), Is.EqualTo(1));
+            Assert.That(fixture.Context.NpcController.GetRuntimeSnapshot().Count(npc => npc.Definition.IsPersistedToDatabase), Is.EqualTo(2));
+            Exception? failure = null;
+            try
+            {
+                if (upgrade)
+                {
+                    await CastleSiegeNpcUpgradeAction.UpgradeAsync(fixture.Player, fixture.Context, (uint)CastleSiegeGate.MonsterNumber, GateInstanceId, CastleSiegeUpgradeType.Life, 1).ConfigureAwait(false);
+                }
+                else
+                {
+                    await CastleSiegeNpcRepairAction.RepairAsync(fixture.Player, fixture.Context, (uint)CastleSiegeGate.MonsterNumber, GateInstanceId).ConfigureAwait(false);
+                }
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(failure, Is.TypeOf<PersistenceConflictException>());
+                Assert.That(fixture.Player.Money, Is.EqualTo(10_000));
+                Assert.That(fixture.Player.Inventory.Items, Is.EquivalentTo(jewels));
+                Assert.That(runtime.PersistedState.CurrentHp, Is.EqualTo(900));
+                Assert.That(runtime.PersistedState.LifeLevel, Is.Zero);
+                Assert.That(runtime.SpawnedInstance, Is.SameAs(gate));
+                Assert.That(runtime.IsAlive, Is.True);
+                Assert.That(gate.Health, Is.EqualTo(900));
+                Assert.That(gate.MaximumHealth, Is.EqualTo(1_000));
+                Assert.That(Mock.Get(fixture.Player.ViewPlugIns.GetPlugIn<ICastleSiegeNpcOperationResultPlugIn>()!).Invocations, Is.Empty);
+            });
+            await fixture.Context.SaveNpcStatesAsync().ConfigureAwait(false); // Periodic incomplete checkpoints remain a harmless skip.
+        }
+        finally
+        {
+            await fixture.Context.NpcController.DespawnAllAsync().ConfigureAwait(false);
+        }
+    }
 
     /// <summary>
     /// Verifies that Castle Senior receives stable management indexes even when structures are not spawned.
@@ -1759,9 +1934,9 @@ public class CastleSiegeNpcTests
     /// Creates the shared production NPC fixture for siege and character admission tests.
     /// </summary>
     /// <returns>The isolated in-memory Castle Siege fixture.</returns>
-    internal static async ValueTask<TestFixture> CreateFixtureAsync()
+    internal static async ValueTask<TestFixture> CreateFixtureAsync(bool rejectNpcSaves = false)
     {
-        var persistenceContextProvider = new InMemoryPersistenceContextProvider();
+        var persistenceContextProvider = new RejectingSiegePersistenceContextProvider();
         BasicModel.GameConfiguration gameConfiguration;
         BasicModel.CastleSiegeConfiguration configuration;
         BasicModel.GameMapDefinition siegeMap;
@@ -1923,6 +2098,7 @@ public class CastleSiegeNpcTests
         var initializationTimeUtc = new DateTime(2026, 8, 3, 12, 0, 0, DateTimeKind.Utc);
         var context = new CastleSiegeContext(gameServerContext, configuration);
         await context.InitializeAsync(initializationTimeUtc).ConfigureAwait(false);
+        persistenceContextProvider.RejectSaves = rejectNpcSaves;
         context.CurrentState = CastleSiegeState.Ready;
         var player = await PlayerTestHelper.CreatePlayerAsync(gameServerContext).ConfigureAwait(false);
         player.GuildStatus = new GuildMemberStatus(OwnerRuntimeGuildId, GuildPosition.GuildMaster);
@@ -1966,6 +2142,7 @@ public class CastleSiegeNpcTests
         {
             castleSiegeConfiguration.NpcDefinitions.Add(new BasicModel.CastleSiegeNpcDefinition
             {
+                Id = Guid.NewGuid(),
                 MonsterDefinition = monster,
                 InstanceId = instanceId,
                 IsPersistedToDatabase = persisted,
@@ -2074,5 +2251,40 @@ public class CastleSiegeNpcTests
 
         /// <inheritdoc />
         public override DateTimeOffset GetUtcNow() => this._utcNow;
+    }
+
+    private sealed class RejectingSiegePersistenceContextProvider : InMemoryPersistenceContextProvider, IPersistenceContextProvider
+    {
+        public bool RejectSaves { get; set; }
+
+        IContext IPersistenceContextProvider.CreateNewTypedContext(Type editType, bool useCache, GameConfiguration? gameConfiguration)
+        {
+            if (!this.RejectSaves || editType != typeof(CastleSiegeData))
+            {
+                return this.CreateNewTypedContext(editType, useCache, gameConfiguration);
+            }
+
+            var context = new Mock<IContext>();
+            context.Setup(value => value.GetByIdAsync<CastleSiegeData>(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .Returns(async () =>
+                {
+                    using var read = this.CreateNewContext();
+                    var source = (await read.GetAsync<CastleSiegeData>().ConfigureAwait(false)).Single();
+                    var copy = new BasicModel.CastleSiegeData { Id = source.Id, OwnerGuildId = source.OwnerGuildId, IsOccupied = source.IsOccupied };
+                    foreach (var npc in source.NpcStates)
+                    {
+                        copy.NpcStates.Add(new BasicModel.CastleSiegeNpcState
+                        {
+                            Id = npc.Id, MonsterNumber = npc.MonsterNumber, InstanceId = npc.InstanceId,
+                            CurrentHp = npc.CurrentHp, DefenseLevel = npc.DefenseLevel, RegenLevel = npc.RegenLevel, LifeLevel = npc.LifeLevel,
+                        });
+                    }
+
+                    return copy;
+                });
+            context.Setup(value => value.SaveChangesAsync(It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new PersistenceConflictException(new InvalidOperationException("Synthetic noncommitting NPC save rejection.")));
+            return context.Object;
+        }
     }
 }

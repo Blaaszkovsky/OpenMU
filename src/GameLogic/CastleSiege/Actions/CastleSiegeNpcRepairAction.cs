@@ -6,6 +6,7 @@ namespace MUnique.OpenMU.GameLogic.CastleSiege.Actions;
 
 using MUnique.OpenMU.GameLogic.CastleSiege.NPC;
 using MUnique.OpenMU.GameLogic.Views.CastleSiege;
+using MUnique.OpenMU.Persistence;
 
 /// <summary>
 /// Repairs Castle Siege gates and Guardian Statues.
@@ -76,6 +77,7 @@ public static class CastleSiegeNpcRepairAction
                 return (CastleSiegeNpcOperationResult.Failed, 0, 0);
             }
 
+            context.NpcController.SynchronizeNpcStates();
             var structure = runtime.SpawnedInstance as CastleSiegeAttackableNpc;
             var maximumHealth = structure?.MaximumHealth ?? context.NpcController.GetMaximumHealth(runtime);
             var currentHealth = structure?.Health ?? state.CurrentHp;
@@ -100,22 +102,30 @@ public static class CastleSiegeNpcRepairAction
                 return (CastleSiegeNpcOperationResult.Failed, currentHealth, maximumHealth);
             }
 
+            var previousMoney = player.Money;
             if (!player.TryRemoveMoney((int)cost))
             {
                 return (CastleSiegeNpcOperationResult.InsufficientMoney, currentHealth, maximumHealth);
             }
 
-            if (structure is null)
+            var previousAlive = runtime.IsAlive;
+            state.CurrentHp = maximumHealth;
+            try
             {
-                state.CurrentHp = maximumHealth;
-                runtime.IsAlive = true;
+                await context.SaveNpcStateMutationAsync(runtime).ConfigureAwait(false);
             }
-            else
+            catch (PersistenceConflictException)
             {
-                structure.RestoreFullHealth();
+                // Only a known noncommitting rejection permits refund; an uncertain save must be reconciled.
+                state.CurrentHp = currentHealth;
+                runtime.IsAlive = previousAlive;
+                player.Money = previousMoney;
+                throw;
             }
 
-            await context.SaveNpcStatesAsync().ConfigureAwait(false);
+            runtime.IsAlive = true;
+            structure?.RestoreFullHealth();
+
             return (CastleSiegeNpcOperationResult.Success, state.CurrentHp, maximumHealth);
         }
         finally

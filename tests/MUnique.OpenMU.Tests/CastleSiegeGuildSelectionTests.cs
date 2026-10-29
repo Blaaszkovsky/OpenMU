@@ -177,6 +177,272 @@ public class CastleSiegeGuildSelectionTests
     }
 
     /// <summary>
+    /// Verifies that another server selects current registrations instead of its admission-time cache.
+    /// </summary>
+    [Test]
+    public async ValueTask SelectionRefreshesRegistrationsAcrossGameContextsAsync()
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        var peerGame = new Mock<IGameServerContext>();
+        peerGame.SetupGet(game => game.Configuration).Returns(fixture.GameConfiguration);
+        peerGame.SetupGet(game => game.PersistenceContextProvider).Returns(fixture.PersistenceContextProvider);
+        peerGame.SetupGet(game => game.GuildServer).Returns(fixture.GuildServer.Object);
+        peerGame.SetupGet(game => game.ServerTimeZone).Returns(TimeZoneInfo.Utc);
+        peerGame.Setup(game => game.GetPlayersAsync()).ReturnsAsync(Array.Empty<Player>());
+        var peer = new CastleSiegeContext(peerGame.Object, fixture.CastleSiegeConfiguration);
+        await peer.InitializeAsync(fixture.InitializationTimeUtc).ConfigureAwait(false);
+        peer.RegisteredGuilds.Clear(); // Its cache predates registrations submitted to the other game server.
+
+        await CastleSiegeGuildSelector.SelectGuildsAsync(fixture.Context).ConfigureAwait(false);
+        using var read = fixture.PersistenceContextProvider.CreateNewContext();
+        var selected = (await read.GetAsync<CastleSiegeData>().ConfigureAwait(false)).Single();
+        var identities = selected.Guilds.ToDictionary(guild => guild.GuildId, guild => guild.Id);
+        await CastleSiegeGuildSelector.SelectGuildsAsync(peer).ConfigureAwait(false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(peer.FinalGuildList.Keys, Is.EquivalentTo(fixture.Context.FinalGuildList.Keys));
+            Assert.That(selected.Guilds.Select(guild => (guild.GuildId, guild.Id)), Is.EquivalentTo(identities.Select(pair => (pair.Key, pair.Value))));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that an unchanged empty peer cannot erase a list selected by another server.
+    /// </summary>
+    [Test]
+    public async ValueTask UnchangedPeerDoesNotClearSelectedGuildsAsync()
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        var peerGame = new Mock<IGameContext>();
+        peerGame.SetupGet(game => game.Configuration).Returns(fixture.GameConfiguration);
+        peerGame.SetupGet(game => game.PersistenceContextProvider).Returns(fixture.PersistenceContextProvider);
+        peerGame.SetupGet(game => game.ServerTimeZone).Returns(TimeZoneInfo.Utc);
+        peerGame.Setup(game => game.GetPlayersAsync()).ReturnsAsync(Array.Empty<Player>());
+        var peer = new CastleSiegeContext(peerGame.Object, fixture.CastleSiegeConfiguration);
+        await peer.InitializeAsync(fixture.InitializationTimeUtc).ConfigureAwait(false);
+
+        await CastleSiegeGuildSelector.SelectGuildsAsync(fixture.Context).ConfigureAwait(false);
+        await peer.SaveFinalGuildListAsync().ConfigureAwait(false);
+
+        using var read = fixture.PersistenceContextProvider.CreateNewContext();
+        Assert.That((await read.GetAsync<CastleSiegeData>().ConfigureAwait(false)).Single().Guilds, Has.Count.EqualTo(6));
+    }
+
+    /// <summary>
+    /// Verifies that a delayed real Crown capture cannot change either ownership or selected sides after a peer capture.
+    /// </summary>
+    /// <param name="throughTick">Whether the rejected capture enters through the Crown progress callback.</param>
+    [TestCase(false)]
+    [TestCase(true)]
+    public async ValueTask StaleCapturePreservesOwnerAndAllGuildSidesAsync(bool throughTick)
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        await CastleSiegeGuildSelector.SelectGuildsAsync(fixture.Context).ConfigureAwait(false);
+        var store = new CastleSiegeStateMachineTests.DetachedSiegeStore(fixture.PersistenceContextProvider);
+        var first = await CreatePeerContextAsync(fixture, store.Provider).ConfigureAwait(false);
+        var delayed = await CreatePeerContextAsync(fixture, store.Provider).ConfigureAwait(false);
+        var originalOwner = delayed.SiegeData.OwnerGuildId;
+        var originalMiddle = delayed.MiddleOwnerGuildId;
+        var originalSides = delayed.FinalGuildList.ToDictionary(pair => pair.Key, pair => pair.Value.Side);
+        var firstPlayer = await CreateSiegePlayerAsync(fixture, AlphaGuildId, "FirstSeal").ConfigureAwait(false);
+        var delayedPlayer = await CreateSiegePlayerAsync(fixture, BravoGuildId, "LateSeal").ConfigureAwait(false);
+        await CastleSiegeCrownMechanics.ChangeWinnerGuildAsync(first, firstPlayer, CastleSiegeJoinSide.Attack1).ConfigureAwait(false);
+        var firstSaved = await store.ReadAsync().ConfigureAwait(false);
+        var expectedOwner = firstSaved.OwnerGuildId;
+        var expectedSides = firstSaved.Guilds.Select(guild => (guild.GuildId, guild.Side, guild.Id)).ToArray();
+        var beforeRejectedSave = store.SuccessfulSaves;
+        Exception? failure = null;
+        try
+        {
+            if (throughTick)
+            {
+                var firstSwitch = await CreateSiegePlayerAsync(fixture, BravoGuildId, "LateSwitch1").ConfigureAwait(false);
+                var secondSwitch = await CreateSiegePlayerAsync(fixture, BravoGuildId, "LateSwitch2").ConfigureAwait(false);
+                delayedPlayer.IsAlive = firstSwitch.IsAlive = secondSwitch.IsAlive = true;
+                delayed.CrownUser = delayedPlayer;
+                delayed.SwitchUsers[0] = firstSwitch;
+                delayed.SwitchUsers[1] = secondSwitch;
+                delayed.CrownAccumulatedTime = TimeSpan.FromSeconds(fixture.CastleSiegeConfiguration.CrownHoldTimeSeconds);
+                await CastleSiegeCrownMechanics.CheckMiddleWinnerAsync(delayed, fixture.InitializationTimeUtc).ConfigureAwait(false);
+            }
+            else
+            {
+                await CastleSiegeCrownMechanics.ChangeWinnerGuildAsync(delayed, delayedPlayer, CastleSiegeJoinSide.Attack3).ConfigureAwait(false);
+            }
+        }
+        catch (Exception exception)
+        {
+            failure = exception;
+        }
+
+        var saved = await store.ReadAsync().ConfigureAwait(false);
+        Assert.Multiple(() =>
+        {
+            Assert.That(failure, Is.TypeOf<PersistenceConflictException>());
+            Assert.That(saved.OwnerGuildId, Is.EqualTo(expectedOwner));
+            Assert.That(saved.Guilds.Select(guild => (guild.GuildId, guild.Side, guild.Id)), Is.EquivalentTo(expectedSides));
+            Assert.That(store.SuccessfulSaves, Is.EqualTo(beforeRejectedSave));
+            Assert.That(beforeRejectedSave, Is.EqualTo(1), "Owner and guild sides must commit together.");
+            Assert.That(delayed.SiegeData.OwnerGuildId, Is.EqualTo(originalOwner));
+            Assert.That(delayed.MiddleOwnerGuildId, Is.EqualTo(originalMiddle));
+            Assert.That(delayed.FinalGuildList.Select(pair => (pair.Key, pair.Value.Side)), Is.EquivalentTo(originalSides.Select(pair => (pair.Key, pair.Value))));
+            Mock.Get(delayedPlayer.ViewPlugIns.GetPlugIn<ICastleSiegeCrownAccessStatePlugIn>()!)
+                .Verify(view => view.ShowCrownAccessStateAsync(CastleSiegeCrownAccessState.Success, It.IsAny<TimeSpan>()), Times.Never);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that returning ownership cannot make an old Crown capture's partial side changes current again.
+    /// </summary>
+    /// <param name="captureCount">The number of real peer captures before the delayed request.</param>
+    [TestCase(3)]
+    [TestCase(4)]
+    public async ValueTask RepeatedCapturesRejectStaleOwnerAndGuildSideBaselineAsync(int captureCount)
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        await CastleSiegeGuildSelector.SelectGuildsAsync(fixture.Context).ConfigureAwait(false);
+        var store = new CastleSiegeStateMachineTests.DetachedSiegeStore(fixture.PersistenceContextProvider);
+        var active = await CreatePeerContextAsync(fixture, store.Provider).ConfigureAwait(false);
+        var delayed = await CreatePeerContextAsync(fixture, store.Provider).ConfigureAwait(false);
+        var localOwner = (delayed.SiegeData.OwnerGuildId, delayed.SiegeData.IsOccupied, delayed.SiegeData.TaxChaos,
+            delayed.SiegeData.TaxStore, delayed.SiegeData.TaxHunt, delayed.SiegeData.TributeMoney, delayed.SiegeData.IsHuntZoneEnabled);
+        var localMiddle = delayed.MiddleOwnerGuildId;
+        var localSides = delayed.FinalGuildList.Select(pair => (pair.Key, pair.Value.Side)).ToArray();
+        var players = new Dictionary<uint, Player>
+        {
+            [AlphaGuildId] = await CreateSiegePlayerAsync(fixture, AlphaGuildId, "ActiveA").ConfigureAwait(false),
+            [BravoGuildId] = await CreateSiegePlayerAsync(fixture, BravoGuildId, "ActiveB").ConfigureAwait(false),
+            [DefenseGuildId] = await CreateSiegePlayerAsync(fixture, DefenseGuildId, "ActiveO").ConfigureAwait(false),
+        };
+        uint[] captures = [AlphaGuildId, BravoGuildId, DefenseGuildId, AlphaGuildId];
+        foreach (var guildId in captures.Take(captureCount))
+        {
+            await CastleSiegeCrownMechanics.ChangeWinnerGuildAsync(active, players[guildId], active.FinalGuildList[guildId].Side).ConfigureAwait(false);
+        }
+
+        active.SiegeData.TaxChaos = 3;
+        active.SiegeData.TaxStore = 2;
+        active.SiegeData.TaxHunt = 123;
+        active.SiegeData.TributeMoney = 777;
+        active.SiegeData.IsHuntZoneEnabled = true;
+        await active.SaveOwnerAsync().ConfigureAwait(false);
+        var before = await store.ReadAsync().ConfigureAwait(false);
+        var expectedOwner = (before.OwnerGuildId, before.IsOccupied, before.TaxChaos,
+            before.TaxStore, before.TaxHunt, before.TributeMoney, before.IsHuntZoneEnabled);
+        var expectedSides = before.Guilds.Select(guild => (guild.GuildId, guild.Side, guild.Id)).ToArray();
+        var saves = store.SuccessfulSaves;
+        Assert.Multiple(() =>
+        {
+            Assert.That(before.OwnerGuildId, Is.EqualTo(captureCount == 3 ? localOwner.OwnerGuildId : fixture.AlphaPersistentGuildId));
+            Assert.That(active.FinalGuildList[BravoGuildId].Side, Is.EqualTo(CastleSiegeJoinSide.Attack1));
+            Assert.That(active.FinalGuildList[DefenseGuildId].Side, Is.EqualTo(captureCount == 3 ? CastleSiegeJoinSide.Defense : CastleSiegeJoinSide.Attack3));
+            Assert.That(active.FinalGuildList[AlphaGuildId].Side, Is.EqualTo(captureCount == 3 ? CastleSiegeJoinSide.Attack3 : CastleSiegeJoinSide.Defense));
+            Assert.That(saves, Is.EqualTo(captureCount + 1));
+        });
+        var delayedPlayer = await CreateSiegePlayerAsync(fixture, AlphaGuildId, "DelayedA").ConfigureAwait(false);
+        Exception? failure = null;
+        try
+        {
+            await CastleSiegeCrownMechanics.ChangeWinnerGuildAsync(delayed, delayedPlayer, CastleSiegeJoinSide.Attack1).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            failure = exception;
+        }
+
+        var saved = await store.ReadAsync().ConfigureAwait(false);
+        Assert.Multiple(() =>
+        {
+            Assert.That(failure, Is.TypeOf<PersistenceConflictException>());
+            Assert.That((saved.OwnerGuildId, saved.IsOccupied, saved.TaxChaos, saved.TaxStore, saved.TaxHunt, saved.TributeMoney, saved.IsHuntZoneEnabled), Is.EqualTo(expectedOwner));
+            Assert.That(saved.Guilds.Select(guild => (guild.GuildId, guild.Side, guild.Id)), Is.EquivalentTo(expectedSides));
+            Assert.That(store.SuccessfulSaves, Is.EqualTo(saves));
+            Assert.That((delayed.SiegeData.OwnerGuildId, delayed.SiegeData.IsOccupied, delayed.SiegeData.TaxChaos, delayed.SiegeData.TaxStore, delayed.SiegeData.TaxHunt, delayed.SiegeData.TributeMoney, delayed.SiegeData.IsHuntZoneEnabled), Is.EqualTo(localOwner));
+            Assert.That(delayed.MiddleOwnerGuildId, Is.EqualTo(localMiddle));
+            Assert.That(delayed.FinalGuildList.Select(pair => (pair.Key, pair.Value.Side)), Is.EquivalentTo(localSides));
+            Mock.Get(delayedPlayer.ViewPlugIns.GetPlugIn<ICastleSiegeCrownAccessStatePlugIn>()!)
+                .Verify(view => view.ShowCrownAccessStateAsync(CastleSiegeCrownAccessState.Success, It.IsAny<TimeSpan>()), Times.Never);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a follower's normal End callback retains and announces the owner already captured by a peer.
+    /// </summary>
+    /// <param name="refreshBeforeEnd">Whether an earlier no-op save already refreshed the follower's owner.</param>
+    [TestCase(false)]
+    [TestCase(true)]
+    public async ValueTask PeerEndRetainsAndAnnouncesFreshCapturedOwnerAsync(bool refreshBeforeEnd)
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        await CastleSiegeGuildSelector.SelectGuildsAsync(fixture.Context).ConfigureAwait(false);
+        var store = new CastleSiegeStateMachineTests.DetachedSiegeStore(fixture.PersistenceContextProvider);
+        var active = await CreatePeerContextAsync(fixture, store.Provider).ConfigureAwait(false);
+        var follower = await CreatePeerContextAsync(fixture, store.Provider).ConfigureAwait(false);
+        Assert.That(follower.SiegeData.OwnerGuildId, Is.Not.Null);
+        var capturingPlayer = await CreateSiegePlayerAsync(fixture, AlphaGuildId, "CaptureA").ConfigureAwait(false);
+        var observer = await CreateSiegePlayerAsync(fixture, DefenseGuildId, "EndObserver").ConfigureAwait(false);
+        follower.TrackPlayer(observer, observer.CurrentMap!);
+        await CastleSiegeCrownMechanics.ChangeWinnerGuildAsync(active, capturingPlayer, CastleSiegeJoinSide.Attack1).ConfigureAwait(false);
+        if (refreshBeforeEnd)
+        {
+            await follower.SaveOwnerAsync().ConfigureAwait(false);
+        }
+
+        await CastleSiegeCrownMechanics.CheckResultAsync(follower).ConfigureAwait(false);
+
+        var saved = await store.ReadAsync().ConfigureAwait(false);
+        Assert.Multiple(() =>
+        {
+            Assert.That(saved.OwnerGuildId, Is.EqualTo(fixture.AlphaPersistentGuildId));
+            Assert.That(follower.SiegeData.OwnerGuildId, Is.EqualTo(fixture.AlphaPersistentGuildId));
+            Assert.That(follower.MiddleOwnerGuildId, Is.EqualTo(AlphaGuildId));
+            Mock.Get(observer.ViewPlugIns.GetPlugIn<ICastleSiegeOwnershipChangePlugIn>()!)
+                .Verify(view => view.ShowOwnershipChangeAsync("Alpha"), Times.Once);
+            Mock.Get(observer.ViewPlugIns.GetPlugIn<ICastleSiegeOwnershipChangePlugIn>()!)
+                .Verify(view => view.ShowOwnershipChangeAsync("Defend"), Times.Never);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a rejected administrative handover restores the exact local economy, including pending tribute.
+    /// </summary>
+    [Test]
+    public async ValueTask RejectedAdminOwnerChangeRestoresPendingEconomyAsync()
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        await CastleSiegeGuildSelector.SelectGuildsAsync(fixture.Context).ConfigureAwait(false);
+        var store = new CastleSiegeStateMachineTests.DetachedSiegeStore(fixture.PersistenceContextProvider);
+        var active = await CreatePeerContextAsync(fixture, store.Provider).ConfigureAwait(false);
+        var plugin = new CastleSiegePlugIn(new FixtureTimeProvider(fixture.InitializationTimeUtc));
+        var follower = await CreatePeerContextAsync(fixture, store.Provider, plugin).ConfigureAwait(false);
+        var capturingPlayer = await CreateSiegePlayerAsync(fixture, AlphaGuildId, "CaptureA").ConfigureAwait(false);
+        follower.SiegeData.TaxChaos = 3;
+        follower.SiegeData.TaxStore = 2;
+        follower.SiegeData.TaxHunt = 123;
+        follower.SiegeData.TributeMoney = 777;
+        follower.SiegeData.IsHuntZoneEnabled = true;
+        follower.IsEconomyPersistencePending = true;
+        var before = (follower.SiegeData.OwnerGuildId, follower.SiegeData.IsOccupied, follower.SiegeData.TaxChaos,
+            follower.SiegeData.TaxStore, follower.SiegeData.TaxHunt, follower.SiegeData.TributeMoney, follower.SiegeData.IsHuntZoneEnabled);
+        var bravoId = follower.FinalGuildList[BravoGuildId].PersistentGuildId;
+        fixture.GuildServer.Setup(server => server.GetPersistentGuildIdByNameAsync("Bravo")).ReturnsAsync(bravoId);
+        fixture.GuildServer.Setup(server => server.GetPersistentGuildNameAsync(bravoId)).ReturnsAsync("Bravo");
+        await CastleSiegeCrownMechanics.ChangeWinnerGuildAsync(active, capturingPlayer, CastleSiegeJoinSide.Attack1).ConfigureAwait(false);
+
+        Assert.ThrowsAsync<PersistenceConflictException>(async () => await new CastleSiegeAdministration(plugin)
+            .SetOwnerAsync(follower.GameContext, "Bravo").ConfigureAwait(false));
+
+        var saved = await store.ReadAsync().ConfigureAwait(false);
+        Assert.Multiple(() =>
+        {
+            Assert.That(saved.OwnerGuildId, Is.EqualTo(fixture.AlphaPersistentGuildId));
+            Assert.That((follower.SiegeData.OwnerGuildId, follower.SiegeData.IsOccupied, follower.SiegeData.TaxChaos,
+                follower.SiegeData.TaxStore, follower.SiegeData.TaxHunt, follower.SiegeData.TributeMoney, follower.SiegeData.IsHuntZoneEnabled), Is.EqualTo(before));
+            Assert.That(follower.IsEconomyPersistencePending, Is.True);
+        });
+    }
+
+    /// <summary>
     /// Verifies that an incomplete alliance response cannot consume an empty attacking side.
     /// </summary>
     [Test]
@@ -606,6 +872,26 @@ public class CastleSiegeGuildSelectionTests
         return player;
     }
 
+    private static async ValueTask<CastleSiegeContext> CreatePeerContextAsync(TestFixture fixture, IPersistenceContextProvider provider, CastleSiegePlugIn? plugin = null)
+    {
+        var game = new Mock<IGameServerContext>();
+        game.SetupGet(value => value.Configuration).Returns(fixture.GameConfiguration);
+        game.SetupGet(value => value.PersistenceContextProvider).Returns(provider);
+        game.SetupGet(value => value.GuildServer).Returns(fixture.GuildServer.Object);
+        game.SetupGet(value => value.ServerTimeZone).Returns(TimeZoneInfo.Utc);
+        game.SetupGet(value => value.LoggerFactory).Returns(NullLoggerFactory.Instance);
+        game.Setup(value => value.GetPlayersAsync()).ReturnsAsync(Array.Empty<Player>());
+        if (plugin is not null)
+        {
+            await plugin.ExecuteTaskAsync(game.Object).ConfigureAwait(false);
+            return plugin.GetContext(game.Object) ?? throw new InvalidOperationException("The test Castle Siege context was not initialized.");
+        }
+
+        var context = new CastleSiegeContext(game.Object, fixture.CastleSiegeConfiguration);
+        await context.InitializeAsync(fixture.InitializationTimeUtc).ConfigureAwait(false);
+        return context;
+    }
+
     private static async ValueTask<TestFixture> CreateFixtureAsync()
     {
         var persistenceContextProvider = new InMemoryPersistenceContextProvider();
@@ -834,4 +1120,9 @@ public class CastleSiegeGuildSelectionTests
         Guid AlphaPersistentGuildId,
         Guid OfflineCharacterId,
         DateTime InitializationTimeUtc);
+
+    private sealed class FixtureTimeProvider(DateTime utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => new(utcNow);
+    }
 }

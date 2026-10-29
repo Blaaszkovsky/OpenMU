@@ -4,10 +4,10 @@
 
 namespace MUnique.OpenMU.GameLogic.CastleSiege;
 
-using Microsoft.Extensions.Logging;
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.GameLogic.CastleSiege.NPC;
 using MUnique.OpenMU.GameLogic.Views.CastleSiege;
+using MUnique.OpenMU.Persistence;
 
 /// <summary>
 /// Implements Castle Siege Crown capture and ownership changes.
@@ -75,12 +75,13 @@ public static class CastleSiegeCrownMechanics
             return;
         }
 
+        var completedTime = context.CrownAccumulatedTime;
+        await ChangeWinnerGuildAsync(context, crownUser!, captureSide.Value).ConfigureAwait(false);
         await SendAccessStateAsync(
                 crownUser!,
                 CastleSiegeCrownAccessState.Success,
-                context.CrownAccumulatedTime)
+                completedTime)
             .ConfigureAwait(false);
-        await ChangeWinnerGuildAsync(context, crownUser!, captureSide.Value).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -108,24 +109,43 @@ public static class CastleSiegeCrownMechanics
         var winnerGuild = context.FinalGuildList.Values
             .FirstOrDefault(guild => guild.Side == capturingSide && guild.IsAllianceMaster)
             ?? capturingGuild;
-        context.MiddleOwnerGuildId = winnerGuild.GuildId;
-        foreach (var guild in context.FinalGuildList.Values)
+        var previous = context.CaptureOwnerState();
+        var previousMiddleOwner = context.MiddleOwnerGuildId;
+        var previousSides = context.FinalGuildList.Values.Select(guild => (Guild: guild, guild.Side)).ToArray();
+        bool ownershipChanged;
+        try
         {
-            if (guild.Side == capturingSide)
+            context.MiddleOwnerGuildId = winnerGuild.GuildId;
+            foreach (var guild in context.FinalGuildList.Values)
             {
-                guild.Side = CastleSiegeJoinSide.Defense;
-                continue;
+                if (guild.Side == capturingSide)
+                {
+                    guild.Side = CastleSiegeJoinSide.Defense;
+                    continue;
+                }
+
+                if (guild.Side == CastleSiegeJoinSide.Defense)
+                {
+                    guild.Side = capturingSide;
+                }
             }
 
-            if (guild.Side == CastleSiegeJoinSide.Defense)
+            ownershipChanged = ApplyOwner(context, winnerGuild.PersistentGuildId);
+            await context.SaveOwnershipAsync().ConfigureAwait(false);
+        }
+        catch (PersistenceConflictException)
+        {
+            // A known noncommitting rejection must leave the attempted capture's runtime state unchanged, too.
+            context.RestoreOwnerState(previous);
+            context.MiddleOwnerGuildId = previousMiddleOwner;
+            foreach (var (guild, side) in previousSides)
             {
-                guild.Side = capturingSide;
+                guild.Side = side;
             }
+
+            throw;
         }
 
-        var ownershipChanged = ApplyOwner(context, winnerGuild.PersistentGuildId);
-        await context.SaveFinalGuildListAsync().ConfigureAwait(false);
-        await context.SaveOwnerAsync().ConfigureAwait(false);
         if (ownershipChanged)
         {
             await CastleSiegeEconomyNotifier.BroadcastTaxRatesAsync(context).ConfigureAwait(false);
@@ -164,34 +184,12 @@ public static class CastleSiegeCrownMechanics
     /// <returns>A task that represents the asynchronous result operation.</returns>
     internal static async ValueTask CheckResultAsync(CastleSiegeContext context)
     {
-        CastleSiegeGuildParticipant? winner = null;
-        if (context.MiddleOwnerGuildId is { } middleOwnerGuildId)
-        {
-            if (context.FinalGuildList.TryGetValue(middleOwnerGuildId, out var participant))
-            {
-                winner = participant;
-            }
-            else
-            {
-                context.GameContext.LoggerFactory
-                    .CreateLogger(typeof(CastleSiegeCrownMechanics))
-                    .LogWarning(
-                        "The intermediate Castle Siege owner {guildId} is not in the selected guild list. The persisted owner is retained.",
-                        middleOwnerGuildId);
-            }
-        }
-
-        var ownershipChanged = winner is not null && ApplyOwner(context, winner.PersistentGuildId);
-
+        // Real captures persist immediately. A follower's MiddleOwner may still describe the Ready-time defender;
+        // End must use the committed owner rather than replaying that stale intermediate assignment.
         await context.SaveOwnerAsync().ConfigureAwait(false);
-        if (ownershipChanged)
-        {
-            await CastleSiegeEconomyNotifier.BroadcastTaxRatesAsync(context).ConfigureAwait(false);
-        }
-
-        var ownerName = winner?.GuildName
-                        ?? await GetOwnerGuildNameAsync(context).ConfigureAwait(false)
-                        ?? string.Empty;
+        var winner = context.FinalGuildList.Values.FirstOrDefault(guild => guild.PersistentGuildId == context.SiegeData.OwnerGuildId);
+        context.MiddleOwnerGuildId = winner?.GuildId;
+        var ownerName = await GetOwnerGuildNameAsync(context).ConfigureAwait(false) ?? string.Empty;
         await BroadcastOwnershipChangeAsync(context, ownerName).ConfigureAwait(false);
     }
 

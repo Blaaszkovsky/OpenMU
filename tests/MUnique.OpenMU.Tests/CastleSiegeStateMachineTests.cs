@@ -5,6 +5,7 @@
 namespace MUnique.OpenMU.Tests;
 
 using System.Runtime.InteropServices;
+using System.Threading;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using MUnique.OpenMU.DataModel.Configuration;
@@ -289,6 +290,230 @@ public class CastleSiegeStateMachineTests
             fixture.GameConfiguration);
         var savedData = (await persistenceContext.GetAsync<CastleSiegeData>().ConfigureAwait(false)).Single();
         Assert.That(savedData.TributeMoney, Is.EqualTo(1234));
+    }
+
+    /// <summary>
+    /// Verifies that an idle server's end-of-cycle saves preserve another server's capture and destroyed gate.
+    /// </summary>
+    [Test]
+    public async ValueTask UnchangedPeerPreservesCapturedOwnerAndDestroyedNpcAsync()
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        await AddNpcStateAsync(fixture, 277, 0, 250_000).ConfigureAwait(false);
+        fixture.CastleSiegeConfiguration.NpcDefinitions.Add(CreateNpcRuntime(277, 0, 250_000, true, true).Definition);
+        var store = new DetachedSiegeStore(fixture.PersistenceContextProvider);
+        var active = await CreateDetachedContextAsync(fixture, store).ConfigureAwait(false);
+        var idle = await CreateDetachedContextAsync(fixture, store).ConfigureAwait(false);
+        var owner = Guid.NewGuid();
+        active.SiegeData.OwnerGuildId = owner;
+        active.SiegeData.IsOccupied = true;
+        active.ActiveNpcs.Single().PersistedState!.CurrentHp = 0;
+        await active.SaveOwnerAsync().ConfigureAwait(false);
+        await active.SaveNpcStatesAsync().ConfigureAwait(false);
+
+        await idle.SaveOwnerAsync().ConfigureAwait(false);
+        await idle.SaveNpcStatesAsync().ConfigureAwait(false);
+        await idle.LoadAsync().ConfigureAwait(false);
+        await idle.SaveNpcStatesAsync().ConfigureAwait(false);
+
+        var saved = await store.ReadAsync().ConfigureAwait(false);
+        Assert.Multiple(() =>
+        {
+            Assert.That(saved.OwnerGuildId, Is.EqualTo(owner));
+            Assert.That(saved.IsOccupied, Is.True);
+            Assert.That(saved.NpcStates.Single().CurrentHp, Is.Zero);
+            Assert.That(idle.SiegeData.OwnerGuildId, Is.EqualTo(owner));
+            Assert.That(idle.ActiveNpcs.Single().PersistedState!.CurrentHp, Is.Zero);
+        });
+    }
+
+    /// <summary>
+    /// Verifies that active servers merge distinct NPC changes and tribute deltas exactly once.
+    /// </summary>
+    [Test]
+    public async ValueTask ActivePeersMergeNpcChangesAndTributeAsync()
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        await AddNpcStateAsync(fixture, 277, 0, 250_000).ConfigureAwait(false);
+        fixture.CastleSiegeConfiguration.NpcDefinitions.Add(CreateNpcRuntime(277, 0, 250_000, true, true).Definition);
+        var store = new DetachedSiegeStore(fixture.PersistenceContextProvider);
+        var first = await CreateDetachedContextAsync(fixture, store).ConfigureAwait(false);
+        var second = await CreateDetachedContextAsync(fixture, store).ConfigureAwait(false);
+        first.ActiveNpcs.Single().PersistedState!.CurrentHp = 0;
+        second.ActiveNpcs.Single().PersistedState!.DefenseLevel = 1;
+        first.SiegeData.TributeMoney += 10;
+        second.SiegeData.TributeMoney += 20;
+        await first.SaveNpcStatesAsync().ConfigureAwait(false);
+        await second.SaveNpcStatesAsync().ConfigureAwait(false);
+        await first.SaveOwnerAsync().ConfigureAwait(false);
+        await second.SaveOwnerAsync().ConfigureAwait(false);
+        await second.SaveOwnerAsync().ConfigureAwait(false);
+        await second.SaveNpcStatesAsync().ConfigureAwait(false);
+
+        var saved = await store.ReadAsync().ConfigureAwait(false);
+        Assert.Multiple(() =>
+        {
+            Assert.That(saved.TributeMoney, Is.EqualTo(72));
+            Assert.That(saved.NpcStates.Single().CurrentHp, Is.Zero);
+            Assert.That(saved.NpcStates.Single().DefenseLevel, Is.EqualTo(1));
+        });
+    }
+
+    /// <summary>
+    /// Verifies that a rejected save is retried with a fresh snapshot without losing the local change.
+    /// </summary>
+    [Test]
+    public async ValueTask OwnerSaveRetriesConflictUsingFreshContextAsync()
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        var store = new DetachedSiegeStore(fixture.PersistenceContextProvider);
+        var context = await CreateDetachedContextAsync(fixture, store).ConfigureAwait(false);
+        context.SiegeData.TributeMoney += 10;
+        store.RejectedSaves = 1;
+        var initialReads = store.WriteReads;
+
+        await context.SaveOwnerAsync().ConfigureAwait(false);
+
+        Assert.That((await store.ReadAsync().ConfigureAwait(false)).TributeMoney, Is.EqualTo(52));
+        Assert.That(store.RejectedSaves, Is.Zero);
+        Assert.That(store.WriteReads - initialReads, Is.EqualTo(2));
+    }
+
+    /// <summary>
+    /// Verifies that separate game contexts coordinate the whole persistent read-modify-save operation.
+    /// </summary>
+    [Test]
+    public async ValueTask ActivePeersSerializePersistentReadModifySaveAsync()
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        var store = new DetachedSiegeStore(fixture.PersistenceContextProvider);
+        var first = await CreateDetachedContextAsync(fixture, store).ConfigureAwait(false);
+        var second = await CreateDetachedContextAsync(fixture, store).ConfigureAwait(false);
+        first.SiegeData.TributeMoney += 10;
+        second.SiegeData.TributeMoney += 20;
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        store.BeforeSave = () => new ValueTask(release.Task);
+        var initialReads = store.WriteReads;
+        var firstSave = first.SaveOwnerAsync().AsTask();
+        var secondSave = second.SaveOwnerAsync().AsTask();
+        try
+        {
+            Assert.That(store.WriteReads - initialReads, Is.EqualTo(1), "The peer must wait before loading its write snapshot.");
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Task.WhenAll(firstSave, secondSave).WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        }
+
+        Assert.That((await store.ReadAsync().ConfigureAwait(false)).TributeMoney, Is.EqualTo(72));
+    }
+
+    /// <summary>
+    /// Verifies that another active server's delayed damage checkpoint cannot resurrect a destroyed structure.
+    /// </summary>
+    [Test]
+    public async ValueTask StaleDamageCheckpointCannotResurrectNpcAsync()
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        await AddNpcStateAsync(fixture, 277, 0, 250_000).ConfigureAwait(false);
+        fixture.CastleSiegeConfiguration.NpcDefinitions.Add(CreateNpcRuntime(277, 0, 250_000, true, true).Definition);
+        var store = new DetachedSiegeStore(fixture.PersistenceContextProvider);
+        var first = await CreateDetachedContextAsync(fixture, store).ConfigureAwait(false);
+        var second = await CreateDetachedContextAsync(fixture, store).ConfigureAwait(false);
+        first.ActiveNpcs.Single().PersistedState!.CurrentHp = 0;
+        second.ActiveNpcs.Single().PersistedState!.CurrentHp = 200_000;
+
+        await first.SaveNpcStatesAsync().ConfigureAwait(false);
+        await second.SaveNpcStatesAsync().ConfigureAwait(false);
+        await second.SaveNpcStatesAsync().ConfigureAwait(false);
+
+        Assert.That((await store.ReadAsync().ConfigureAwait(false)).NpcStates.Single().CurrentHp, Is.Zero);
+    }
+
+    /// <summary>
+    /// Verifies that a stale repair fails instead of undoing a concurrent kill, while a fresh repair remains valid.
+    /// </summary>
+    [Test]
+    public async ValueTask StaleRepairCannotUndoKillButFreshRepairCanRestoreNpcAsync()
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        await AddNpcStateAsync(fixture, 277, 0, 100_000).ConfigureAwait(false);
+        fixture.CastleSiegeConfiguration.NpcDefinitions.Add(CreateNpcRuntime(277, 0, 100_000, true, true).Definition);
+        var store = new DetachedSiegeStore(fixture.PersistenceContextProvider);
+        var first = await CreateDetachedContextAsync(fixture, store).ConfigureAwait(false);
+        var second = await CreateDetachedContextAsync(fixture, store).ConfigureAwait(false);
+        first.ActiveNpcs.Single().PersistedState!.CurrentHp = 0;
+        second.ActiveNpcs.Single().PersistedState!.CurrentHp = 250_000;
+        await first.SaveNpcStatesAsync().ConfigureAwait(false);
+
+        Assert.ThrowsAsync<PersistenceConflictException>(async () => await second.SaveNpcStatesAsync().ConfigureAwait(false));
+        Assert.That((await store.ReadAsync().ConfigureAwait(false)).NpcStates.Single().CurrentHp, Is.Zero);
+        var fresh = await CreateDetachedContextAsync(fixture, store).ConfigureAwait(false);
+        fresh.ActiveNpcs.Single().PersistedState!.CurrentHp = 250_000;
+        await fresh.SaveNpcStatesAsync().ConfigureAwait(false);
+        Assert.That((await store.ReadAsync().ConfigureAwait(false)).NpcStates.Single().CurrentHp, Is.EqualTo(250_000));
+    }
+
+    /// <summary>
+    /// Verifies that another server's idempotent capture does not reset taxes collected by the new owner.
+    /// </summary>
+    [Test]
+    public async ValueTask RepeatedCapturePreservesNewTenureTributeAsync()
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        var store = new DetachedSiegeStore(fixture.PersistenceContextProvider);
+        var first = await CreateDetachedContextAsync(fixture, store).ConfigureAwait(false);
+        var second = await CreateDetachedContextAsync(fixture, store).ConfigureAwait(false);
+        var owner = Guid.NewGuid();
+        CastleSiegeCrownMechanics.ApplyOwner(first, owner);
+        CastleSiegeCrownMechanics.ApplyOwner(second, owner);
+        await first.SaveOwnerAsync().ConfigureAwait(false);
+        first.SiegeData.TributeMoney = 10;
+        await first.SaveOwnerAsync().ConfigureAwait(false);
+
+        await second.SaveOwnerAsync().ConfigureAwait(false);
+
+        Assert.That((await store.ReadAsync().ConfigureAwait(false)).TributeMoney, Is.EqualTo(10));
+    }
+
+    /// <summary>
+    /// Verifies that an exhausted save does not acknowledge a delta which was never committed.
+    /// </summary>
+    [Test]
+    public async ValueTask RejectedSavePreservesBaselineForLaterRetryAsync()
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        var store = new DetachedSiegeStore(fixture.PersistenceContextProvider);
+        var context = await CreateDetachedContextAsync(fixture, store).ConfigureAwait(false);
+        context.SiegeData.TributeMoney += 10;
+        store.RejectedSaves = 3;
+
+        Assert.ThrowsAsync<PersistenceConflictException>(async () => await context.SaveOwnerAsync().ConfigureAwait(false));
+        Assert.That((await store.ReadAsync().ConfigureAwait(false)).TributeMoney, Is.EqualTo(42));
+        await context.SaveOwnerAsync().ConfigureAwait(false);
+        await context.SaveOwnerAsync().ConfigureAwait(false);
+        Assert.That((await store.ReadAsync().ConfigureAwait(false)).TributeMoney, Is.EqualTo(52));
+    }
+
+    /// <summary>
+    /// Verifies that a configured structure initialized by two servers has a stable local checkpoint before its first save.
+    /// </summary>
+    [Test]
+    public async ValueTask InitialNpcCheckpointPreservesPeerDamageAsync()
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        fixture.CastleSiegeConfiguration.NpcDefinitions.Add(CreateNpcRuntime(277, 0, 250_000, true, true).Definition);
+        fixture.CastleSiegeConfiguration.GateLifeUpgrades.Add(new MUnique.OpenMU.Persistence.BasicModel.CastleSiegeUpgradeDefinition { Level = 0, Value = 250_000 });
+        var store = new DetachedSiegeStore(fixture.PersistenceContextProvider);
+        var first = await CreateDetachedContextAsync(fixture, store).ConfigureAwait(false);
+        var second = await CreateDetachedContextAsync(fixture, store).ConfigureAwait(false);
+        first.ActiveNpcs.Single().PersistedState!.CurrentHp = 0;
+
+        await first.SaveNpcStatesAsync().ConfigureAwait(false);
+        await second.SaveNpcStatesAsync().ConfigureAwait(false);
+
+        Assert.That((await store.ReadAsync().ConfigureAwait(false)).NpcStates.Single().CurrentHp, Is.Zero);
     }
 
     /// <summary>
@@ -1006,6 +1231,125 @@ public class CastleSiegeStateMachineTests
             gameContext,
             registeredGuildId,
             notifications);
+    }
+
+    private static async ValueTask<CastleSiegeContext> CreateDetachedContextAsync(TestFixture fixture, DetachedSiegeStore store)
+    {
+        var game = new Mock<IGameContext>();
+        game.SetupGet(value => value.Configuration).Returns(fixture.GameConfiguration);
+        game.SetupGet(value => value.PersistenceContextProvider).Returns(store.Provider);
+        game.SetupGet(value => value.ServerTimeZone).Returns(TimeZoneInfo.Utc);
+        game.Setup(value => value.GetPlayersAsync()).ReturnsAsync(Array.Empty<Player>());
+        var context = new CastleSiegeContext(game.Object, fixture.CastleSiegeConfiguration);
+        await context.InitializeAsync(new DateTime(2026, 8, 3, 12, 0, 0, DateTimeKind.Utc)).ConfigureAwait(false);
+        return context;
+    }
+
+    // Ordinary InMemory contexts share entity references. This adapter models detached EF reads and atomic saves.
+    internal sealed class DetachedSiegeStore
+    {
+        private readonly IPersistenceContextProvider _inner;
+
+        public DetachedSiegeStore(IPersistenceContextProvider inner)
+        {
+            this._inner = inner;
+            var provider = new Mock<IPersistenceContextProvider>();
+            provider.Setup(value => value.CreateNewTypedContext(It.IsAny<Type>(), It.IsAny<bool>(), It.IsAny<GameConfiguration>()))
+                .Returns<Type, bool, GameConfiguration>((type, cached, configuration) => type == typeof(CastleSiegeData)
+                    ? this.CreateContext()
+                    : inner.CreateNewTypedContext(type, cached, configuration));
+            this.Provider = provider.Object;
+        }
+
+        public IPersistenceContextProvider Provider { get; }
+
+        public int RejectedSaves { get; set; }
+
+        public int WriteReads { get; private set; }
+
+        public int SuccessfulSaves { get; private set; }
+
+        public Func<ValueTask>? BeforeSave { get; set; }
+
+        public async Task<CastleSiegeData> ReadAsync()
+        {
+            using var context = this._inner.CreateNewContext();
+            return (await context.GetAsync<CastleSiegeData>().ConfigureAwait(false)).Single();
+        }
+
+        private static MUnique.OpenMU.Persistence.BasicModel.CastleSiegeData Clone(CastleSiegeData source)
+        {
+            var result = new MUnique.OpenMU.Persistence.BasicModel.CastleSiegeData { Id = source.Id };
+            Copy(source, result);
+            return result;
+        }
+
+        private static void Copy(CastleSiegeData source, CastleSiegeData target)
+        {
+            target.OwnerGuildId = source.OwnerGuildId;
+            target.IsOccupied = source.IsOccupied;
+            target.TaxChaos = source.TaxChaos;
+            target.TaxStore = source.TaxStore;
+            target.TaxHunt = source.TaxHunt;
+            target.IsHuntZoneEnabled = source.IsHuntZoneEnabled;
+            target.TributeMoney = source.TributeMoney;
+            target.NpcStates.Clear();
+            foreach (var npc in source.NpcStates)
+            {
+                target.NpcStates.Add(new MUnique.OpenMU.Persistence.BasicModel.CastleSiegeNpcState
+                {
+                    Id = npc.Id, MonsterNumber = npc.MonsterNumber, InstanceId = npc.InstanceId,
+                    DefenseLevel = npc.DefenseLevel, RegenLevel = npc.RegenLevel, LifeLevel = npc.LifeLevel, CurrentHp = npc.CurrentHp,
+                });
+            }
+
+            target.Guilds.Clear();
+            foreach (var guild in source.Guilds)
+            {
+                target.Guilds.Add(new MUnique.OpenMU.Persistence.BasicModel.CastleSiegeGuild
+                {
+                    Id = guild.Id, GuildId = guild.GuildId, GuildName = guild.GuildName,
+                    Side = guild.Side, Score = guild.Score, IsAllianceMaster = guild.IsAllianceMaster,
+                });
+            }
+        }
+
+        private IContext CreateContext()
+        {
+            CastleSiegeData? snapshot = null;
+            var context = new Mock<IContext>();
+            context.Setup(value => value.CreateNew<CastleSiegeNpcState>(It.IsAny<object?[]>()))
+                .Returns(() => new MUnique.OpenMU.Persistence.BasicModel.CastleSiegeNpcState { Id = Guid.NewGuid() });
+            context.Setup(value => value.CreateNew<CastleSiegeGuild>(It.IsAny<object?[]>()))
+                .Returns(() => new MUnique.OpenMU.Persistence.BasicModel.CastleSiegeGuild { Id = Guid.NewGuid() });
+            context.Setup(value => value.GetAsync<CastleSiegeData>(It.IsAny<CancellationToken>()))
+                .Returns(async () => new[] { Clone(await this.ReadAsync().ConfigureAwait(false)) });
+            context.Setup(value => value.GetByIdAsync<CastleSiegeData>(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .Returns(async () =>
+                {
+                    this.WriteReads++;
+                    return snapshot = Clone(await this.ReadAsync().ConfigureAwait(false));
+                });
+            context.Setup(value => value.SaveChangesAsync(It.IsAny<CancellationToken>()))
+                .Returns(async () =>
+                {
+                    if (this.BeforeSave is { } beforeSave)
+                    {
+                        await beforeSave().ConfigureAwait(false);
+                    }
+
+                    if (this.RejectedSaves > 0)
+                    {
+                        this.RejectedSaves--;
+                        throw new PersistenceConflictException(new InvalidOperationException("Synthetic noncommitting concurrency rejection."));
+                    }
+
+                    Copy(snapshot!, await this.ReadAsync().ConfigureAwait(false));
+                    this.SuccessfulSaves++;
+                    return true;
+                });
+            return context.Object;
+        }
     }
 
     private sealed record TestFixture(

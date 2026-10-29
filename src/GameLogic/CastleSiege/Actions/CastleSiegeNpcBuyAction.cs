@@ -6,6 +6,7 @@ namespace MUnique.OpenMU.GameLogic.CastleSiege.Actions;
 
 using MUnique.OpenMU.GameLogic.CastleSiege.NPC;
 using MUnique.OpenMU.GameLogic.Views.CastleSiege;
+using MUnique.OpenMU.Persistence;
 
 /// <summary>
 /// Re-purchases destroyed Castle Siege gates and Guardian Statues.
@@ -83,15 +84,36 @@ public static class CastleSiegeNpcBuyAction
                 return CastleSiegeNpcOperationResult.Failed;
             }
 
+            var previousMoney = player.Money;
             if (!player.TryRemoveMoney(price))
             {
                 return CastleSiegeNpcOperationResult.InsufficientMoney;
             }
 
+            context.NpcController.SynchronizeNpcStates();
+            var previousDefense = state.DefenseLevel;
+            var previousLife = state.LifeLevel;
+            var previousRegen = state.RegenLevel;
+            var previousHealth = state.CurrentHp;
             state.DefenseLevel = 0;
             state.LifeLevel = 0;
             state.RegenLevel = 0;
             state.CurrentHp = initialHealth;
+            try
+            {
+                await context.SaveNpcStateMutationAsync(runtime).ConfigureAwait(false);
+            }
+            catch (PersistenceConflictException)
+            {
+                // Spawn and terrain effects happen only after a confirmed save.
+                state.DefenseLevel = previousDefense;
+                state.LifeLevel = previousLife;
+                state.RegenLevel = previousRegen;
+                state.CurrentHp = previousHealth;
+                player.Money = previousMoney;
+                throw;
+            }
+
             if (context.CurrentState is CastleSiegeState.Ready or CastleSiegeState.End)
             {
                 await context.NpcController.RespawnAsync(runtime).ConfigureAwait(false);
@@ -107,7 +129,6 @@ public static class CastleSiegeNpcBuyAction
                 runtime.IsAlive = true;
             }
 
-            await context.SaveNpcStatesAsync().ConfigureAwait(false);
             return CastleSiegeNpcOperationResult.Success;
         }
         finally

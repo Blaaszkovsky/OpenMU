@@ -1,26 +1,31 @@
-// <copyright file="CastleSiegeContext.cs" company="MUnique">
+﻿// <copyright file="CastleSiegeContext.cs" company="MUnique">
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.
 // </copyright>
 
 namespace MUnique.OpenMU.GameLogic.CastleSiege;
 
+using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Microsoft.Extensions.Logging;
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.DataModel.Entities;
 using MUnique.OpenMU.GameLogic.CastleSiege.NPC;
 using MUnique.OpenMU.GameLogic.Views.CastleSiege;
+using MUnique.OpenMU.Persistence;
+using Nito.AsyncEx;
 
 /// <summary>
 /// Holds the runtime state of Castle Siege for one game context.
 /// </summary>
 /// <remarks>
-/// Runtime registrations and <see cref="ExecutionLock"/> are scoped to this game context. Deployments which run
-/// multiple game-server processes require external coordination when registrations are changed concurrently.
+/// Runtime objects and <see cref="ExecutionLock"/> are scoped to this game context; persistence operations are
+/// coordinated across game contexts sharing the same provider and persistent siege identifier.
 /// </remarks>
 public class CastleSiegeContext : IEventStateProvider
 {
     private static readonly TimeSpan JoinSideEffectDuration = TimeSpan.FromDays(7);
+    private static readonly ConditionalWeakTable<IPersistenceContextProvider, PersistenceCoordinator> PersistenceCoordinators = new();
 
     private readonly IGameContext _gameContext;
     private readonly TimeProvider _timeProvider;
@@ -28,6 +33,7 @@ public class CastleSiegeContext : IEventStateProvider
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Player, byte> _siegeMapPlayers = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<uint, CastleSiegeLifeStone> _lifeStones = new();
     private int _requestedState = -1;
+    private CastleSiegeData _savedState = new RuntimeSiegeData();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CastleSiegeContext"/> class.
@@ -281,11 +287,7 @@ public class CastleSiegeContext : IEventStateProvider
     /// </summary>
     public async ValueTask LoadAsync()
     {
-        this.SiegeData = await this.LoadDataAsync().ConfigureAwait(false)
-            ?? throw new InvalidOperationException("The persistent Castle Siege state does not exist.");
-        this.NpcController.InitializePersistentStructures();
-        await this.LoadRegistrationsAsync().ConfigureAwait(false);
-        await this.LoadFinalGuildListAsync().ConfigureAwait(false);
+        await this.LoadPersistentStateAsync(false).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -298,17 +300,37 @@ public class CastleSiegeContext : IEventStateProvider
             return;
         }
 
-        using var context = this._gameContext.PersistenceContextProvider.CreateNewTypedContext(typeof(CastleSiegeData), false, this._gameContext.Configuration);
-        var persistentData = await context.GetByIdAsync<CastleSiegeData>(this.SiegeData.Id).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("The persistent Castle Siege state no longer exists.");
+        await this.WithPersistenceLockAsync(async () =>
+        {
+            var local = CreateSnapshot(this.SiegeData);
+            var baseline = this._savedState;
+            if (ScalarStateEquals(local, baseline))
+            {
+                // An idle peer learns a capture without issuing a stale owner/economy update.
+                using var read = this._gameContext.PersistenceContextProvider.CreateNewTypedContext(typeof(CastleSiegeData), false, this._gameContext.Configuration);
+                var current = await read.GetByIdAsync<CastleSiegeData>(local.Id).ConfigureAwait(false)
+                    ?? throw new InvalidOperationException("The persistent Castle Siege state no longer exists.");
+                CopyScalarState(current, this.SiegeData);
+                CopyScalarState(current, this._savedState);
+                this.IsEconomyPersistencePending = false;
+                return;
+            }
 
-        CopyScalarState(this.SiegeData, persistentData);
-        await context.SaveChangesAsync().ConfigureAwait(false);
-        this.IsEconomyPersistencePending = false;
+            CastleSiegeData? acknowledged = null;
+            await this.PersistAsync((_, target) =>
+            {
+                ApplyOwnerChanges(local, baseline, target);
+                acknowledged = CreateSnapshot(target);
+                return ValueTask.CompletedTask;
+            }).ConfigureAwait(false);
+            CopyScalarState(acknowledged!, this.SiegeData);
+            CopyScalarState(acknowledged!, this._savedState);
+            this.IsEconomyPersistencePending = false;
+        }).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Replaces the persistent selected-guild list with the current runtime snapshot.
+    /// Persists deliberate changes to the selected guilds without replacing unchanged rows.
     /// </summary>
     /// <returns>A task that represents the asynchronous save operation.</returns>
     public async ValueTask SaveFinalGuildListAsync()
@@ -318,31 +340,7 @@ public class CastleSiegeContext : IEventStateProvider
             return;
         }
 
-        using var context = this._gameContext.PersistenceContextProvider.CreateNewTypedContext(
-            typeof(CastleSiegeData),
-            false,
-            this._gameContext.Configuration);
-        var persistentData = await context.GetByIdAsync<CastleSiegeData>(this.SiegeData.Id).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("The persistent Castle Siege state no longer exists.");
-
-        foreach (var oldGuild in persistentData.Guilds.ToList())
-        {
-            await context.DeleteAsync(oldGuild).ConfigureAwait(false);
-        }
-
-        persistentData.Guilds.Clear();
-        foreach (var guild in CastleSiegeGuildSelector.OrderFinalGuilds(this.FinalGuildList.Values))
-        {
-            var persistentGuild = context.CreateNew<CastleSiegeGuild>();
-            persistentGuild.GuildId = guild.PersistentGuildId;
-            persistentGuild.GuildName = guild.GuildName;
-            persistentGuild.Side = guild.Side;
-            persistentGuild.Score = guild.Score;
-            persistentGuild.IsAllianceMaster = guild.IsAllianceMaster;
-            persistentData.Guilds.Add(persistentGuild);
-        }
-
-        await context.SaveChangesAsync().ConfigureAwait(false);
+        await this.WithPersistenceLockAsync(this.SaveFinalGuildListCoreAsync).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -355,56 +353,7 @@ public class CastleSiegeContext : IEventStateProvider
             return;
         }
 
-        this.NpcController.SynchronizeNpcStates();
-        var persistedNpcs = this.NpcController.GetRuntimeSnapshot()
-            .Where(npc => npc.Definition.IsPersistedToDatabase)
-            .ToList();
-        if (persistedNpcs.Count == 0 || persistedNpcs.Any(npc => npc.PersistedState is null))
-        {
-            return;
-        }
-
-        var statesToSave = persistedNpcs
-            .Select(npc => npc.PersistedState!)
-            .ToDictionary(GetNpcKey);
-
-        // Completeness follows the current configuration, which may intentionally remove saved structures.
-        var configuredKeys = this.Configuration.NpcDefinitions
-            .Where(definition => definition.IsPersistedToDatabase)
-            .Select(definition => (
-                definition.MonsterDefinition?.Number ?? throw Error.NotInitializedProperty(definition, nameof(definition.MonsterDefinition)),
-                definition.InstanceId))
-            .ToHashSet();
-        if (!configuredKeys.SetEquals(statesToSave.Keys))
-        {
-            return;
-        }
-
-        using var context = this._gameContext.PersistenceContextProvider.CreateNewTypedContext(typeof(CastleSiegeData), false, this._gameContext.Configuration);
-        var persistentData = await context.GetByIdAsync<CastleSiegeData>(this.SiegeData.Id).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("The persistent Castle Siege state no longer exists.");
-
-        foreach (var target in persistentData.NpcStates.ToList())
-        {
-            if (statesToSave.Remove(GetNpcKey(target), out var source))
-            {
-                CopyNpcState(source, target);
-            }
-            else
-            {
-                await context.DeleteAsync(target).ConfigureAwait(false);
-                persistentData.NpcStates.Remove(target);
-            }
-        }
-
-        foreach (var source in statesToSave.Values)
-        {
-            var target = context.CreateNew<CastleSiegeNpcState>();
-            CopyNpcState(source, target);
-            persistentData.NpcStates.Add(target);
-        }
-
-        await context.SaveChangesAsync().ConfigureAwait(false);
+        await this.WithPersistenceLockAsync(() => this.SaveNpcStatesCoreAsync(true)).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -412,14 +361,70 @@ public class CastleSiegeContext : IEventStateProvider
     /// </summary>
     public async ValueTask ClearRegistrationsAsync()
     {
-        using var context = this._gameContext.PersistenceContextProvider.CreateNewTypedContext(typeof(CastleSiegeGuildRegistration), false, this._gameContext.Configuration);
-        foreach (var registration in (await context.GetAsync<CastleSiegeGuildRegistration>().ConfigureAwait(false)).ToList())
-        {
-            await context.DeleteAsync(registration).ConfigureAwait(false);
-        }
+        await this.WithPersistenceLockAsync(this.ClearRegistrationsCoreAsync).ConfigureAwait(false);
+    }
 
-        await context.SaveChangesAsync().ConfigureAwait(false);
-        this.RegisteredGuilds.Clear();
+    /// <summary>
+    /// Captures owner and economy values, including local changes not yet acknowledged by persistence.
+    /// </summary>
+    /// <returns>The caller's pre-mutation scalar state.</returns>
+    internal CastleSiegeData CaptureOwnerState()
+    {
+        var snapshot = new RuntimeSiegeData { Id = this.SiegeData.Id };
+        CopyScalarState(this.SiegeData, snapshot);
+        return snapshot;
+    }
+
+    /// <summary>
+    /// Restores a caller's owner and economy values after a known noncommitting rejection.
+    /// </summary>
+    /// <param name="snapshot">The values captured before the attempted mutation.</param>
+    internal void RestoreOwnerState(CastleSiegeData snapshot)
+    {
+        CopyScalarState(snapshot, this.SiegeData);
+    }
+
+    /// <summary>
+    /// Commits a Crown handover and its guild-side changes as one persistent operation.
+    /// </summary>
+    /// <returns>The atomic save operation.</returns>
+    internal async ValueTask SaveOwnershipAsync()
+    {
+        await this.WithPersistenceLockAsync(async () =>
+        {
+            var local = CreateSnapshot(this.SiegeData);
+            var guilds = this.GetFinalGuildSnapshot();
+            var guildBaseline = this._savedState.Guilds.ToDictionary(guild => guild.GuildId);
+            CastleSiegeData? acknowledged = null;
+            await this.PersistAsync(async (context, target) =>
+            {
+                // Ownership can return to the same guild with different attacking sides after several captures.
+                if (!SameOwner(target, this._savedState)
+                    || target.Guilds.Count != guildBaseline.Count
+                    || guildBaseline.Any(saved => !target.Guilds.Any(current => current.GuildId == saved.Key && current.Side == saved.Value.Side)))
+                {
+                    throw new PersistenceConflictException(new InvalidOperationException("The Crown owner or selected guild sides changed before this local handover could be saved."));
+                }
+
+                ApplyOwnerChanges(local, this._savedState, target);
+                await ApplyGuildChangesAsync(context, target, guilds, guildBaseline).ConfigureAwait(false);
+                acknowledged = CreateSnapshot(target);
+            }).ConfigureAwait(false);
+            CopyScalarState(acknowledged!, this.SiegeData);
+            CopyScalarState(acknowledged!, this._savedState);
+            this.AcknowledgeFinalGuilds(guilds);
+            this.IsEconomyPersistencePending = false;
+        }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Saves a staged management mutation before changing its spawned NPC or consuming its item cost.
+    /// </summary>
+    /// <param name="runtime">The structure whose management request requires an unchanged persistent checkpoint.</param>
+    /// <returns>The save operation.</returns>
+    internal async ValueTask SaveNpcStateMutationAsync(CastleSiegeNpcRuntime runtime)
+    {
+        await this.WithPersistenceLockAsync(() => this.SaveNpcStatesCoreAsync(false, runtime)).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -727,21 +732,14 @@ public class CastleSiegeContext : IEventStateProvider
     /// <returns>The created registration.</returns>
     internal async ValueTask<CastleSiegeGuildRegistration> AddRegistrationAsync(Guid guildId, string guildName)
     {
-        using var context = this._gameContext.PersistenceContextProvider.CreateNewTypedContext(
-            typeof(CastleSiegeGuildRegistration),
-            false,
-            this._gameContext.Configuration);
-        var registration = context.CreateNew<CastleSiegeGuildRegistration>();
-        registration.GuildId = guildId;
-        registration.GuildName = guildName;
-
-        // Registration orders stay monotonic for one cycle and are intentionally not compacted after unregistration.
-        registration.RegistrationOrder = this.RegisteredGuilds.IsEmpty
-            ? 1
-            : this.RegisteredGuilds.Values.Max(entry => entry.RegistrationOrder) + 1;
-        await context.SaveChangesAsync().ConfigureAwait(false);
-        this.RegisteredGuilds[guildId] = registration;
-        return registration;
+        CastleSiegeGuildRegistration? result = null;
+        await this.WithPersistenceLockAsync(async () =>
+        {
+            await this.LoadRegistrationsAsync().ConfigureAwait(false);
+            result = this.RegisteredGuilds.GetValueOrDefault(guildId)
+                ?? await this.AddRegistrationCoreAsync(guildId, guildName).ConfigureAwait(false);
+        }).ConfigureAwait(false);
+        return result!;
     }
 
     /// <summary>
@@ -750,17 +748,7 @@ public class CastleSiegeContext : IEventStateProvider
     /// <param name="registration">The registration.</param>
     internal async ValueTask RemoveRegistrationAsync(CastleSiegeGuildRegistration registration)
     {
-        using var context = this._gameContext.PersistenceContextProvider.CreateNewTypedContext(
-            typeof(CastleSiegeGuildRegistration),
-            false,
-            this._gameContext.Configuration);
-        if (await context.GetByIdAsync<CastleSiegeGuildRegistration>(registration.Id).ConfigureAwait(false) is { } persistentRegistration)
-        {
-            await context.DeleteAsync(persistentRegistration).ConfigureAwait(false);
-            await context.SaveChangesAsync().ConfigureAwait(false);
-        }
-
-        this.RegisteredGuilds.TryRemove(registration.GuildId, out _);
+        await this.WithPersistenceLockAsync(() => this.RemoveRegistrationCoreAsync(registration)).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -770,20 +758,9 @@ public class CastleSiegeContext : IEventStateProvider
     /// <returns>The updated mark count, or <see langword="null"/> if the registration no longer exists.</returns>
     internal async ValueTask<int?> IncrementMarksAsync(CastleSiegeGuildRegistration registration)
     {
-        using var context = this._gameContext.PersistenceContextProvider.CreateNewTypedContext(
-            typeof(CastleSiegeGuildRegistration),
-            false,
-            this._gameContext.Configuration);
-        if (await context.GetByIdAsync<CastleSiegeGuildRegistration>(registration.Id).ConfigureAwait(false) is not { } persistentRegistration)
-        {
-            this.RegisteredGuilds.TryRemove(registration.GuildId, out _);
-            return null;
-        }
-
-        persistentRegistration.Marks++;
-        await context.SaveChangesAsync().ConfigureAwait(false);
-        registration.Marks = persistentRegistration.Marks;
-        return registration.Marks;
+        int? result = null;
+        await this.WithPersistenceLockAsync(async () => result = await this.IncrementMarksCoreAsync(registration).ConfigureAwait(false)).ConfigureAwait(false);
+        return result;
     }
 
     /// <summary>
@@ -793,11 +770,7 @@ public class CastleSiegeContext : IEventStateProvider
     /// <returns>The initialized state period.</returns>
     internal async ValueTask<CastleSiegeStatePeriod> InitializeAsync(DateTime utcNow)
     {
-        this.SiegeData = await this.LoadDataAsync().ConfigureAwait(false)
-            ?? await this.CreateDataAsync().ConfigureAwait(false);
-        this.NpcController.InitializePersistentStructures();
-        await this.LoadRegistrationsAsync().ConfigureAwait(false);
-        await this.LoadFinalGuildListAsync().ConfigureAwait(false);
+        await this.LoadPersistentStateAsync(true).ConfigureAwait(false);
         var period = this.Schedule.GetCurrentEventPeriod(utcNow);
         this.SetPeriod(period);
         await this.InitializeSiegeMapPlayersAsync().ConfigureAwait(false);
@@ -882,6 +855,225 @@ public class CastleSiegeContext : IEventStateProvider
         return persistedEntry.Value.Side;
     }
 
+    /// <summary>
+    /// Selects guilds from current registrations while coordinating the complete read-select-save operation.
+    /// </summary>
+    /// <param name="select">The runtime selection operation.</param>
+    /// <returns>The selection task.</returns>
+    internal async ValueTask SelectGuildsAsync(Func<ValueTask> select)
+    {
+        await this.WithPersistenceLockAsync(async () =>
+        {
+            await this.LoadRegistrationsAsync().ConfigureAwait(false);
+            using var read = this._gameContext.PersistenceContextProvider.CreateNewTypedContext(typeof(CastleSiegeData), false, this._gameContext.Configuration);
+            var current = await read.GetByIdAsync<CastleSiegeData>(this.SiegeData.Id).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("The persistent Castle Siege state no longer exists.");
+            if (ScalarStateEquals(this.SiegeData, this._savedState))
+            {
+                CopyScalarState(current, this.SiegeData);
+                CopyScalarState(current, this._savedState);
+            }
+
+            await select().ConfigureAwait(false);
+            await this.SaveFinalGuildListCoreAsync().ConfigureAwait(false);
+        }).ConfigureAwait(false);
+    }
+
+    private static bool SameOwner(CastleSiegeData first, CastleSiegeData second)
+    {
+        return first.OwnerGuildId == second.OwnerGuildId && first.IsOccupied == second.IsOccupied;
+    }
+
+    private static void ApplyOwnerChanges(CastleSiegeData local, CastleSiegeData baseline, CastleSiegeData target)
+    {
+        var ownerChanged = !SameOwner(local, baseline);
+        if (ownerChanged && !SameOwner(target, baseline) && !SameOwner(target, local))
+        {
+            throw new PersistenceConflictException(new InvalidOperationException("Castle ownership changed before this local handover could be saved."));
+        }
+
+        if (ownerChanged)
+        {
+            if (target.OwnerGuildId != local.OwnerGuildId || target.IsOccupied != local.IsOccupied)
+            {
+                // A capture intentionally replaces the former owner's entire economy, including zero values.
+                CopyScalarState(local, target);
+            }
+            else
+            {
+                // Another context already persisted this handover. Do not repeat the zero-value reset.
+                if (local.TaxChaos != 0)
+                {
+                    target.TaxChaos = local.TaxChaos;
+                }
+
+                if (local.TaxStore != 0)
+                {
+                    target.TaxStore = local.TaxStore;
+                }
+
+                if (local.TaxHunt != 0)
+                {
+                    target.TaxHunt = local.TaxHunt;
+                }
+
+                if (local.IsHuntZoneEnabled)
+                {
+                    target.IsHuntZoneEnabled = true;
+                }
+
+                target.TributeMoney = checked(target.TributeMoney + local.TributeMoney);
+            }
+        }
+        else
+        {
+            var economyChanged = !ScalarStateEquals(local, baseline);
+            if (economyChanged && (target.OwnerGuildId != baseline.OwnerGuildId || target.IsOccupied != baseline.IsOccupied))
+            {
+                throw new InvalidOperationException("Castle ownership changed while local economy changes were pending.");
+            }
+
+            if (local.TaxChaos != baseline.TaxChaos)
+            {
+                target.TaxChaos = local.TaxChaos;
+            }
+
+            if (local.TaxStore != baseline.TaxStore)
+            {
+                target.TaxStore = local.TaxStore;
+            }
+
+            if (local.TaxHunt != baseline.TaxHunt)
+            {
+                target.TaxHunt = local.TaxHunt;
+            }
+
+            if (local.IsHuntZoneEnabled != baseline.IsHuntZoneEnabled)
+            {
+                target.IsHuntZoneEnabled = local.IsHuntZoneEnabled;
+            }
+
+            target.TributeMoney = checked(target.TributeMoney + (local.TributeMoney - baseline.TributeMoney));
+            if (target.TributeMoney < 0)
+            {
+                throw new InvalidOperationException("Castle tribute was withdrawn by another game context.");
+            }
+        }
+    }
+
+    private static async ValueTask ApplyGuildChangesAsync(
+        IContext context,
+        CastleSiegeData persistentData,
+        Dictionary<Guid, CastleSiegeGuild> local,
+        Dictionary<Guid, CastleSiegeGuild> baseline)
+    {
+        foreach (var target in persistentData.Guilds.ToList())
+        {
+            if (baseline.ContainsKey(target.GuildId) && !local.ContainsKey(target.GuildId))
+            {
+                await context.DeleteAsync(target).ConfigureAwait(false);
+                persistentData.Guilds.Remove(target);
+            }
+        }
+
+        foreach (var (id, source) in local)
+        {
+            var target = persistentData.Guilds.FirstOrDefault(guild => guild.GuildId == id);
+            if (target is null)
+            {
+                // An unchanged stale entry must not resurrect a row removed by the other server.
+                if (baseline.TryGetValue(id, out var previous) && GuildStateEquals(source, previous))
+                {
+                    continue;
+                }
+
+                target = context.CreateNew<CastleSiegeGuild>();
+                target.GuildId = id;
+                CopyGuildState(source, target);
+                persistentData.Guilds.Add(target);
+            }
+            else if (!baseline.TryGetValue(id, out var previous))
+            {
+                CopyGuildState(source, target);
+            }
+            else
+            {
+                if (source.GuildName != previous.GuildName)
+                {
+                    target.GuildName = source.GuildName;
+                }
+
+                if (source.Side != previous.Side)
+                {
+                    target.Side = source.Side;
+                }
+
+                if (source.Score != previous.Score)
+                {
+                    target.Score = source.Score;
+                }
+
+                if (source.IsAllianceMaster != previous.IsAllianceMaster)
+                {
+                    target.IsAllianceMaster = source.IsAllianceMaster;
+                }
+            }
+        }
+    }
+
+    private static bool ScalarStateEquals(CastleSiegeData first, CastleSiegeData second)
+    {
+        return first.OwnerGuildId == second.OwnerGuildId && first.IsOccupied == second.IsOccupied
+            && first.TaxChaos == second.TaxChaos && first.TaxStore == second.TaxStore && first.TaxHunt == second.TaxHunt
+            && first.IsHuntZoneEnabled == second.IsHuntZoneEnabled && first.TributeMoney == second.TributeMoney;
+    }
+
+    private static bool GuildStateEquals(CastleSiegeGuild first, CastleSiegeGuild second)
+    {
+        return first.GuildName == second.GuildName && first.Side == second.Side
+            && first.Score == second.Score && first.IsAllianceMaster == second.IsAllianceMaster;
+    }
+
+    private static bool NpcStateEquals(CastleSiegeNpcState first, CastleSiegeNpcState second)
+    {
+        return first.CurrentHp == second.CurrentHp && first.DefenseLevel == second.DefenseLevel
+            && first.RegenLevel == second.RegenLevel && first.LifeLevel == second.LifeLevel;
+    }
+
+    private static void CopyGuildState(CastleSiegeGuild source, CastleSiegeGuild target)
+    {
+        target.GuildName = source.GuildName;
+        target.Side = source.Side;
+        target.Score = source.Score;
+        target.IsAllianceMaster = source.IsAllianceMaster;
+    }
+
+    private static CastleSiegeData CreateSnapshot(CastleSiegeData source)
+    {
+        var snapshot = new RuntimeSiegeData { Id = source.Id };
+        CopyScalarState(source, snapshot);
+        foreach (var state in source.NpcStates)
+        {
+            snapshot.NpcStates.Add(CloneNpcState(state));
+        }
+
+        foreach (var guild in source.Guilds)
+        {
+            var copy = new CastleSiegeGuild { Id = guild.Id, GuildId = guild.GuildId };
+            CopyGuildState(guild, copy);
+            snapshot.Guilds.Add(copy);
+        }
+
+        return snapshot;
+    }
+
+    private static CastleSiegeNpcState CloneNpcState(CastleSiegeNpcState source)
+    {
+        var clone = new CastleSiegeNpcState { Id = source.Id };
+        CopyNpcState(source, clone);
+        return clone;
+    }
+
     private static void CopyScalarState(CastleSiegeData source, CastleSiegeData target)
     {
         target.OwnerGuildId = source.OwnerGuildId;
@@ -957,6 +1149,309 @@ public class CastleSiegeContext : IEventStateProvider
             .ConfigureAwait(false);
     }
 
+    private async ValueTask SaveNpcStatesCoreAsync(bool synchronizeRuntime, CastleSiegeNpcRuntime? mutation = null)
+    {
+        if (synchronizeRuntime)
+        {
+            this.NpcController.SynchronizeNpcStates();
+        }
+
+        var persistedNpcs = this.NpcController.GetRuntimeSnapshot()
+            .Where(npc => npc.Definition.IsPersistedToDatabase)
+            .ToList();
+        if (persistedNpcs.Count == 0 || persistedNpcs.Any(npc => npc.PersistedState is null)
+            || (mutation is not null && !persistedNpcs.Contains(mutation)))
+        {
+            if (mutation is not null)
+            {
+                throw new PersistenceConflictException(new InvalidOperationException("The Castle NPC management snapshot is incomplete."));
+            }
+
+            return;
+        }
+
+        var statesToSave = persistedNpcs
+            .Select(npc => CloneNpcState(npc.PersistedState!))
+            .ToDictionary(GetNpcKey);
+
+        // Completeness follows the current configuration, which may intentionally remove saved structures.
+        var configuredKeys = this.Configuration.NpcDefinitions
+            .Where(definition => definition.IsPersistedToDatabase)
+            .Select(definition => (
+                definition.MonsterDefinition?.Number ?? throw Error.NotInitializedProperty(definition, nameof(definition.MonsterDefinition)),
+                definition.InstanceId))
+            .ToHashSet();
+        if (!configuredKeys.SetEquals(statesToSave.Keys))
+        {
+            if (mutation is not null)
+            {
+                throw new PersistenceConflictException(new InvalidOperationException("Castle NPC definitions changed before the management request could be saved."));
+            }
+
+            return;
+        }
+
+        var baseline = this._savedState.NpcStates.ToDictionary(GetNpcKey);
+        await this.PersistAsync(async (context, persistentData) =>
+        {
+            if (mutation?.PersistedState is { } staged)
+            {
+                var key = GetNpcKey(staged);
+                var current = persistentData.NpcStates.FirstOrDefault(state => GetNpcKey(state) == key);
+                if ((baseline.TryGetValue(key, out var previous) && (current is null ? previous.Id != Guid.Empty : !NpcStateEquals(current, previous)))
+                    || persistentData.OwnerGuildId != this._savedState.OwnerGuildId
+                    || persistentData.IsOccupied != this._savedState.IsOccupied)
+                {
+                    throw new PersistenceConflictException(new InvalidOperationException("Castle ownership or NPC state changed before the management request could be saved."));
+                }
+            }
+
+            // Validate every health increase before mutating any tracked state (including InMemory entities).
+            foreach (var (key, source) in statesToSave)
+            {
+                var current = persistentData.NpcStates.FirstOrDefault(state => GetNpcKey(state) == key);
+                if (baseline.TryGetValue(key, out var previous)
+                    && source.CurrentHp > previous.CurrentHp
+                    && current is not null
+                    && current.CurrentHp != previous.CurrentHp)
+                {
+                    throw new PersistenceConflictException(new InvalidOperationException("Castle NPC health changed before a local repair or regeneration checkpoint could be saved."));
+                }
+            }
+
+            foreach (var target in persistentData.NpcStates.ToList())
+            {
+                var key = GetNpcKey(target);
+                if (!statesToSave.ContainsKey(key) && baseline.ContainsKey(key))
+                {
+                    await context.DeleteAsync(target).ConfigureAwait(false);
+                    persistentData.NpcStates.Remove(target);
+                }
+            }
+
+            foreach (var (key, source) in statesToSave)
+            {
+                var target = persistentData.NpcStates.FirstOrDefault(state => GetNpcKey(state) == key);
+                if (target is null)
+                {
+                    if (baseline.TryGetValue(key, out var previous) && previous.Id != Guid.Empty)
+                    {
+                        continue;
+                    }
+
+                    target = context.CreateNew<CastleSiegeNpcState>();
+                    CopyNpcState(source, target);
+                    persistentData.NpcStates.Add(target);
+                }
+                else if (!baseline.TryGetValue(key, out var previous))
+                {
+                    CopyNpcState(source, target);
+                }
+                else
+                {
+                    if (source.CurrentHp < previous.CurrentHp)
+                    {
+                        // Damage checkpoints merge their local loss, so a delayed save cannot resurrect a kill.
+                        target.CurrentHp = (int)Math.Max(0L, (long)target.CurrentHp + source.CurrentHp - previous.CurrentHp);
+                    }
+                    else if (source.CurrentHp > previous.CurrentHp)
+                    {
+                        target.CurrentHp = source.CurrentHp;
+                    }
+
+                    if (source.DefenseLevel != previous.DefenseLevel)
+                    {
+                        target.DefenseLevel = source.DefenseLevel;
+                    }
+
+                    if (source.RegenLevel != previous.RegenLevel)
+                    {
+                        target.RegenLevel = source.RegenLevel;
+                    }
+
+                    if (source.LifeLevel != previous.LifeLevel)
+                    {
+                        target.LifeLevel = source.LifeLevel;
+                    }
+                }
+            }
+        }).ConfigureAwait(false);
+
+        this._savedState.NpcStates.Clear();
+        foreach (var state in statesToSave.Values)
+        {
+            this._savedState.NpcStates.Add(state);
+        }
+    }
+
+    private async ValueTask ClearRegistrationsCoreAsync()
+    {
+        using var context = this._gameContext.PersistenceContextProvider.CreateNewTypedContext(typeof(CastleSiegeGuildRegistration), false, this._gameContext.Configuration);
+        foreach (var registration in (await context.GetAsync<CastleSiegeGuildRegistration>().ConfigureAwait(false)).ToList())
+        {
+            await context.DeleteAsync(registration).ConfigureAwait(false);
+        }
+
+        await context.SaveChangesAsync().ConfigureAwait(false);
+        this.RegisteredGuilds.Clear();
+    }
+
+    private async ValueTask<CastleSiegeGuildRegistration> AddRegistrationCoreAsync(Guid guildId, string guildName)
+    {
+        using var context = this._gameContext.PersistenceContextProvider.CreateNewTypedContext(
+            typeof(CastleSiegeGuildRegistration),
+            false,
+            this._gameContext.Configuration);
+        var registration = context.CreateNew<CastleSiegeGuildRegistration>();
+        registration.GuildId = guildId;
+        registration.GuildName = guildName;
+
+        // Registration orders stay monotonic for one cycle and are intentionally not compacted after unregistration.
+        registration.RegistrationOrder = this.RegisteredGuilds.IsEmpty
+            ? 1
+            : this.RegisteredGuilds.Values.Max(entry => entry.RegistrationOrder) + 1;
+        await context.SaveChangesAsync().ConfigureAwait(false);
+        this.RegisteredGuilds[guildId] = registration;
+        return registration;
+    }
+
+    private async ValueTask RemoveRegistrationCoreAsync(CastleSiegeGuildRegistration registration)
+    {
+        using var context = this._gameContext.PersistenceContextProvider.CreateNewTypedContext(
+            typeof(CastleSiegeGuildRegistration),
+            false,
+            this._gameContext.Configuration);
+        if (await context.GetByIdAsync<CastleSiegeGuildRegistration>(registration.Id).ConfigureAwait(false) is { } persistentRegistration)
+        {
+            await context.DeleteAsync(persistentRegistration).ConfigureAwait(false);
+            await context.SaveChangesAsync().ConfigureAwait(false);
+        }
+
+        this.RegisteredGuilds.TryRemove(registration.GuildId, out _);
+    }
+
+    private async ValueTask<int?> IncrementMarksCoreAsync(CastleSiegeGuildRegistration registration)
+    {
+        using var context = this._gameContext.PersistenceContextProvider.CreateNewTypedContext(
+            typeof(CastleSiegeGuildRegistration),
+            false,
+            this._gameContext.Configuration);
+        if (await context.GetByIdAsync<CastleSiegeGuildRegistration>(registration.Id).ConfigureAwait(false) is not { } persistentRegistration)
+        {
+            this.RegisteredGuilds.TryRemove(registration.GuildId, out _);
+            return null;
+        }
+
+        persistentRegistration.Marks++;
+        await context.SaveChangesAsync().ConfigureAwait(false);
+        registration.Marks = persistentRegistration.Marks;
+        return registration.Marks;
+    }
+
+    private async ValueTask SaveFinalGuildListCoreAsync()
+    {
+        var local = this.GetFinalGuildSnapshot();
+        var baseline = this._savedState.Guilds.ToDictionary(guild => guild.GuildId);
+        await this.PersistAsync((context, target) => ApplyGuildChangesAsync(context, target, local, baseline)).ConfigureAwait(false);
+        this.AcknowledgeFinalGuilds(local);
+    }
+
+    private Dictionary<Guid, CastleSiegeGuild> GetFinalGuildSnapshot()
+    {
+        return CastleSiegeGuildSelector.OrderFinalGuilds(this.FinalGuildList.Values)
+            .ToDictionary(guild => guild.PersistentGuildId, guild => new CastleSiegeGuild
+            {
+                GuildId = guild.PersistentGuildId,
+                GuildName = guild.GuildName,
+                Side = guild.Side,
+                Score = guild.Score,
+                IsAllianceMaster = guild.IsAllianceMaster,
+            });
+    }
+
+    private void AcknowledgeFinalGuilds(Dictionary<Guid, CastleSiegeGuild> local)
+    {
+        this._savedState.Guilds.Clear();
+        foreach (var guild in local.Values)
+        {
+            this._savedState.Guilds.Add(guild);
+        }
+    }
+
+    private async ValueTask LoadPersistentStateAsync(bool createMissing)
+    {
+        var coordinator = PersistenceCoordinators.GetValue(this._gameContext.PersistenceContextProvider, _ => new PersistenceCoordinator());
+        using (await coordinator.Initialization.LockAsync().ConfigureAwait(false))
+        {
+            var data = await this.LoadDataAsync().ConfigureAwait(false);
+            if (data is null)
+            {
+                data = createMissing
+                    ? await this.CreateDataAsync().ConfigureAwait(false)
+                    : throw new InvalidOperationException("The persistent Castle Siege state does not exist.");
+            }
+
+            var gate = coordinator.Aggregates.GetOrAdd(data.Id, _ => new AsyncLock());
+            using (await gate.LockAsync().ConfigureAwait(false))
+            {
+                using var read = this._gameContext.PersistenceContextProvider.CreateNewTypedContext(typeof(CastleSiegeData), false, this._gameContext.Configuration);
+                var current = await read.GetByIdAsync<CastleSiegeData>(data.Id).ConfigureAwait(false)
+                    ?? throw new InvalidOperationException("The persistent Castle Siege state no longer exists.");
+                this.SiegeData = CreateSnapshot(current);
+                foreach (var runtime in this.NpcController.GetRuntimeSnapshot().Where(runtime => runtime.Definition.IsPersistedToDatabase))
+                {
+                    var number = runtime.Definition.MonsterDefinition?.Number;
+                    runtime.PersistedState = this.SiegeData.NpcStates.FirstOrDefault(state => state.MonsterNumber == number && state.InstanceId == runtime.Definition.InstanceId);
+                }
+
+                this.NpcController.InitializePersistentStructures();
+                this._savedState = CreateSnapshot(this.SiegeData);
+                await this.LoadRegistrationsAsync().ConfigureAwait(false);
+                await this.LoadFinalGuildListAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async ValueTask WithPersistenceLockAsync(Func<ValueTask> operation)
+    {
+        // shortcut: coordination covers game contexts sharing a provider in this process. Multiple server hosts
+        // still need database/distributed coordination; this lock is not a distributed aggregate lock.
+        var coordinator = PersistenceCoordinators.GetValue(this._gameContext.PersistenceContextProvider, _ => new PersistenceCoordinator());
+        var gate = coordinator.Aggregates.GetOrAdd(this.SiegeData.Id, _ => new AsyncLock());
+        using (await gate.LockAsync().ConfigureAwait(false))
+        {
+            await operation().ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask PersistAsync(Func<IContext, CastleSiegeData, ValueTask> apply)
+    {
+        const int maximumAttempts = 3;
+        for (var attempt = 1; ; attempt++)
+        {
+            using var context = this._gameContext.PersistenceContextProvider.CreateNewTypedContext(typeof(CastleSiegeData), false, this._gameContext.Configuration);
+            var current = await context.GetByIdAsync<CastleSiegeData>(this.SiegeData.Id).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("The persistent Castle Siege state no longer exists.");
+            await apply(context, current).ConfigureAwait(false);
+            try
+            {
+                if (!await context.SaveChangesAsync().ConfigureAwait(false))
+                {
+                    throw new InvalidOperationException("The Castle Siege persistence operation did not succeed.");
+                }
+
+                return;
+            }
+            catch (PersistenceConflictException exception) when (attempt < maximumAttempts)
+            {
+                // A conflict is known not to have committed. Reapply the logical delta to a fresh unit of work.
+                this._gameContext.LoggerFactory?.CreateLogger<CastleSiegeContext>()
+                    .LogWarning(exception, "Retrying Castle Siege persistence with a fresh context (attempt {Attempt}/{MaximumAttempts}).", attempt, maximumAttempts);
+                await Task.Delay(attempt * 10).ConfigureAwait(false);
+            }
+        }
+    }
+
     private async ValueTask InitializeSiegeMapPlayersAsync()
     {
         this._siegeMapPlayers.Clear();
@@ -1029,5 +1524,21 @@ public class CastleSiegeContext : IEventStateProvider
         }
 
         this.InitializeBattleOwner();
+    }
+
+    private sealed class PersistenceCoordinator
+    {
+        public AsyncLock Initialization { get; } = new();
+
+        public ConcurrentDictionary<Guid, AsyncLock> Aggregates { get; } = new();
+    }
+
+    private sealed class RuntimeSiegeData : CastleSiegeData
+    {
+        public RuntimeSiegeData()
+        {
+            this.NpcStates = new List<CastleSiegeNpcState>();
+            this.Guilds = new List<CastleSiegeGuild>();
+        }
     }
 }
