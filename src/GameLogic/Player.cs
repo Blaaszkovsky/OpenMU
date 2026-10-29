@@ -837,7 +837,7 @@ public class Player : AsyncDisposable, IBucketMapObserver, IAttackable, IAttacke
 
         bool isPvpDamage = attacker is Player or IPlayerSurrogate;
         float damage = isPvpDamage ? hitInfo.TotalDamage : attacker.Attributes[Stats.MinimumPhysBaseDmg];
-        await this.DecreaseItemDurabilityAfterHitAsync(damage, isPvpDamage, skill).ConfigureAwait(false);
+        await this.DecreaseItemDurabilityAfterHitAsync(damage, isPvpDamage, skill, hitInfo.PetDamage).ConfigureAwait(false);
 
         if (attacker as IPlayerSurrogate is { } playerSurrogate)
         {
@@ -2238,7 +2238,7 @@ public class Player : AsyncDisposable, IBucketMapObserver, IAttackable, IAttacke
         }
     }
 
-    private async ValueTask DecreaseItemDurabilityAfterHitAsync(float damage, bool isPvpDamage, SkillEntry? skill)
+    private async ValueTask DecreaseItemDurabilityAfterHitAsync(float damage, bool isPvpDamage, SkillEntry? skill, float petDamage)
     {
         if (!isPvpDamage)
         {
@@ -2272,7 +2272,7 @@ public class Player : AsyncDisposable, IBucketMapObserver, IAttackable, IAttacke
 
         if (this.Inventory?.GetItem(InventoryConstants.PetSlot) is { Durability: > 0.0 } pet)
         {
-            await this.DecreasePetDurabilityAsync(pet, damage).ConfigureAwait(false);
+            await this.DecreasePetDurabilityAsync(pet, petDamage).ConfigureAwait(false);
         }
     }
 
