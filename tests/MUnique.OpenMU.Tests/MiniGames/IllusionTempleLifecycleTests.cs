@@ -20,6 +20,7 @@ using MUnique.OpenMU.GameLogic.PlayerActions.Items;
 using MUnique.OpenMU.GameLogic.PlayerActions.MiniGames;
 using MUnique.OpenMU.GameLogic.Views;
 using MUnique.OpenMU.GameLogic.Views.Inventory;
+using MUnique.OpenMU.GameLogic.Views.World;
 using MUnique.OpenMU.Pathfinding;
 using MUnique.OpenMU.Persistence.InMemory;
 using MUnique.OpenMU.PlugIns;
@@ -204,6 +205,105 @@ public class IllusionTempleLifecycleTests
         }
 
         await WaitUntilAsync(() => !HasRelic(carrier) && GetDrops(world.Game).Any(drop => IsRelic(drop.Item)), TimeSpan.FromSeconds(2), "The relic must drop after the victim's persistence lock is released.").ConfigureAwait(false);
+    }
+
+    /// <summary>The legacy death packet must respawn an admitted player in the same event instance and restore its view.</summary>
+    [Test]
+    [Timeout(90_000)]
+    public async Task LegacyDeathRespawnPreservesMiniGameInstanceAndVisibilityAsync()
+    {
+        await using var world = await TestWorld.CreateAsync(2, infoRange: byte.MaxValue).ConfigureAwait(false);
+        await world.StartAsync().ConfigureAwait(false);
+        var victim = world.Players[0];
+        var attacker = world.Players[1];
+        var eventMap = world.Game.Map;
+        var hostedMap = (await world.Context.GetMapAsync(eventMap.MapId).ConfigureAwait(false))!;
+        var pedestal = GetNpcs(world.Game).Single(npc => npc.Definition.Number == 383 + world.Game.GetTeam(victim));
+        Assert.That(hostedMap, Is.Not.SameAs(eventMap), "The hosted map and the admitted event instance must be distinct.");
+        var respawn = Mock.Get(victim.ViewPlugIns.GetPlugIn<IRespawnAfterDeathPlugIn>()!);
+        var playersInScope = Mock.Get(victim.ViewPlugIns.GetPlugIn<INewPlayersInScopePlugIn>()!);
+        var npcsInScope = Mock.Get(victim.ViewPlugIns.GetPlugIn<INewNpcsInScopePlugIn>()!);
+        respawn.Invocations.Clear();
+        playersInScope.Invocations.Clear();
+        npcsInScope.Invocations.Clear();
+        var respawned = new TaskCompletionSource<GameMap>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ValueTask OnRespawnedAsync((GameMap Map, ILocateable Object) args)
+        {
+            if (args.Object == victim)
+            {
+                respawned.TrySetResult(args.Map);
+            }
+
+            return ValueTask.CompletedTask;
+        }
+
+        eventMap.ObjectAdded += OnRespawnedAsync;
+        hostedMap.ObjectAdded += OnRespawnedAsync;
+        try
+        {
+            victim.Attributes![Stats.CurrentShield] = 0;
+            victim.Attributes[Stats.CurrentHealth] = 1;
+            await victim.AttackByAsync(attacker, null, false).ConfigureAwait(false);
+            Assert.That(victim.IsAlive, Is.False, "The ordinary opponent attack must trigger the natural death/respawn timer.");
+            var addedMap = await respawned.Task.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+
+            respawn.Verify(view => view.RespawnAsync(), Times.Once);
+            Assert.That(addedMap, Is.SameAs(eventMap), "The old-client respawn must rejoin the admitted instance, not the hosted map with the same number.");
+            Assert.Multiple(() =>
+            {
+                Assert.That(victim.CurrentMap, Is.SameAs(eventMap));
+                Assert.That(victim.CurrentMiniGame, Is.SameAs(world.Game));
+                Assert.That(world.Game.PlayerCount, Is.EqualTo(2));
+                Assert.That(victim.IsAlive, Is.True);
+                Assert.That(victim.PlayerState.CurrentState, Is.EqualTo(PlayerState.EnteredWorld));
+                Assert.That(eventMap.GetPlayers().Count(player => player == victim), Is.EqualTo(1));
+                Assert.That(hostedMap.GetPlayers(), Does.Not.Contain(victim));
+            });
+            playersInScope.Verify(view => view.NewPlayersInScopeAsync(It.Is<IEnumerable<Player>>(players => players.Contains(attacker)), It.IsAny<bool>()), Times.Once);
+            npcsInScope.Verify(view => view.NewNpcsInScopeAsync(It.Is<IEnumerable<NonPlayerCharacter>>(npcs => npcs.Contains(pedestal)), It.IsAny<bool>()), Times.Once);
+
+            await victim.ClientReadyAfterMapChangeAsync().ConfigureAwait(false);
+            Assert.That(eventMap.GetAttackablesInRange(victim.Position, 1).Count(player => player == victim), Is.EqualTo(1), "A trailing client-ready packet must not duplicate the respawned player in the area of interest.");
+            var position = victim.Position;
+            await eventMap.RemoveAsync(victim).ConfigureAwait(false);
+            Assert.That(eventMap.GetAttackablesInRange(position, 1), Does.Not.Contain(victim), "Ordinary removal must leave no respawn ghost.");
+        }
+        finally
+        {
+            eventMap.ObjectAdded -= OnRespawnedAsync;
+            hostedMap.ObjectAdded -= OnRespawnedAsync;
+        }
+    }
+
+    /// <summary>A legacy respawn to another map must detach the event and retain the normal hosted-map fallback.</summary>
+    [Test]
+    [Timeout(90_000)]
+    public async Task LegacyCrossMapRespawnLeavesMiniGameAsync()
+    {
+        await using var world = await TestWorld.CreateAsync(2).ConfigureAwait(false);
+        await world.StartAsync().ConfigureAwait(false);
+        var player = world.Players[0];
+        var eventMap = world.Game.Map;
+        var eventPosition = player.Position;
+        var homeMap = (await world.Context.GetMapAsync(0).ConfigureAwait(false))!;
+        var respawn = Mock.Get(player.ViewPlugIns.GetPlugIn<IRespawnAfterDeathPlugIn>()!);
+        respawn.Invocations.Clear();
+
+        await player.RespawnAtAsync(homeMap.SafeZoneSpawnGate!).ConfigureAwait(false);
+        await player.ClientReadyAfterMapChangeAsync().ConfigureAwait(false);
+
+        respawn.Verify(view => view.RespawnAsync(), Times.Once);
+        Assert.Multiple(() =>
+        {
+            Assert.That(player.CurrentMiniGame, Is.Null);
+            Assert.That(world.Game.PlayerCount, Is.EqualTo(1));
+            Assert.That(player.CurrentMap, Is.SameAs(homeMap));
+            Assert.That(player.SelectedCharacter!.CurrentMap, Is.SameAs(homeMap.Definition));
+            Assert.That(homeMap.GetPlayers().Count(candidate => candidate == player), Is.EqualTo(1));
+            Assert.That(homeMap.GetAttackablesInRange(player.Position, 1).Count(candidate => candidate == player), Is.EqualTo(1));
+            Assert.That(eventMap.GetPlayers(), Does.Not.Contain(player));
+            Assert.That(eventMap.GetAttackablesInRange(eventPosition, 1), Does.Not.Contain(player));
+        });
     }
 
     /// <summary>Ten admitted players are split evenly, and the ordinary attack route rejects friendly fire.</summary>
@@ -537,13 +637,18 @@ public class IllusionTempleLifecycleTests
 
         public IllusionTempleContext Game { get; private set; } = null!;
 
-        public static async ValueTask<TestWorld> CreateAsync(int playerCount, TimeSpan? itemDropDuration = null, byte winningScore = 2)
+        public static async ValueTask<TestWorld> CreateAsync(int playerCount, TimeSpan? itemDropDuration = null, byte winningScore = 2, byte? infoRange = null)
         {
             var provider = new InMemoryPersistenceContextProvider();
             await new Persistence.Initialization.VersionSeasonSix.DataInitialization(provider, NullLoggerFactory.Instance)
                 .CreateInitialDataAsync(1, true).ConfigureAwait(false);
             using var persistenceContext = provider.CreateNewContext();
             var configuration = (await persistenceContext.GetAsync<GameConfiguration>().ConfigureAwait(false)).Single();
+            if (infoRange is { } range)
+            {
+                configuration.InfoRange = range;
+            }
+
             if (itemDropDuration is { } dropDuration)
             {
                 configuration.ItemDropDuration = dropDuration;

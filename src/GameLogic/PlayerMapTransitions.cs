@@ -210,7 +210,7 @@ internal sealed class PlayerMapTransitions
         {
             // Older clients use a separate packet for the respawn, while newer don't.
             // It requires a slightly different logic.
-            player.CurrentMap = await this.GetMapToEnterAsync(player.SelectedCharacter!.CurrentMap!).ConfigureAwait(false) ?? throw new InvalidOperationException("Current map not found.");
+            player.CurrentMap = player.CurrentMiniGame?.Map ?? await this.GetMapToEnterAsync(player.SelectedCharacter!.CurrentMap!).ConfigureAwait(false) ?? throw new InvalidOperationException("Current map not found.");
             await respawnPlugIn.RespawnAsync().ConfigureAwait(false);
             await player.PlayerState.TryAdvanceToAsync(GameLogic.PlayerState.EnteredWorld).ConfigureAwait(false);
             player.IsAlive = true;
