@@ -7,6 +7,7 @@ namespace MUnique.OpenMU.GameServer.RemoteView.CastleSiege;
 using System.Runtime.InteropServices;
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.GameLogic.Views.CastleSiege;
+using MUnique.OpenMU.GameServer.MessageHandler.CastleSiege;
 using MUnique.OpenMU.Network;
 using MUnique.OpenMU.Network.Packets.ServerToClient;
 using MUnique.OpenMU.PlugIns;
@@ -64,7 +65,7 @@ public class CastleSiegeNpcOperationResultPlugIn : ICastleSiegeNpcOperationResul
             npcNumber,
             npcIndex,
             (uint)upgradeType,
-            upgradeLevel);
+            CastleSiegeUpgradeValueAdapter.GetResponseValue(CastleSiegeHandlerContext.Get(this._player)?.Configuration, npcNumber, upgradeType, upgradeLevel));
 
     /// <inheritdoc />
     public ValueTask ShowGateInterfaceAsync(

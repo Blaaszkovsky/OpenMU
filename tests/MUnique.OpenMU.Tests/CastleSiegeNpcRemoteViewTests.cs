@@ -5,6 +5,8 @@
 namespace MUnique.OpenMU.Tests;
 
 using MUnique.OpenMU.DataModel.Configuration;
+using MUnique.OpenMU.GameLogic.CastleSiege;
+using MUnique.OpenMU.GameLogic.PlugIns;
 using MUnique.OpenMU.GameLogic.Views.CastleSiege;
 using MUnique.OpenMU.GameServer.RemoteView.CastleSiege;
 using MUnique.OpenMU.Network.Packets.ServerToClient;
@@ -15,6 +17,45 @@ using MUnique.OpenMU.Network.Packets.ServerToClient;
 [TestFixture]
 public class CastleSiegeNpcRemoteViewTests
 {
+    /// <summary>
+    /// Verifies that life responses contain physical health while defense and regeneration retain their level values.
+    /// </summary>
+    /// <param name="monsterNumber">The structure monster number.</param>
+    /// <param name="upgradeType">The upgraded attribute.</param>
+    /// <param name="expectedValue">The physical wire value.</param>
+    [TestCase((short)277, CastleSiegeUpgradeType.Life, 2_500_000u)]
+    [TestCase((short)283, CastleSiegeUpgradeType.Life, 2_500_000u)]
+    [TestCase((short)277, CastleSiegeUpgradeType.Defense, 1u)]
+    [TestCase((short)283, CastleSiegeUpgradeType.Regen, 1u)]
+    public async ValueTask SerializeUpgradeUsesSeasonSixValueContractAsync(short monsterNumber, CastleSiegeUpgradeType upgradeType, uint expectedValue)
+    {
+        var fixture = await CastleSiegeNpcTests.CreateFixtureAsync().ConfigureAwait(false);
+        fixture.Configuration.GetUpgrades(monsterNumber, CastleSiegeUpgradeType.Life)!.Single(definition => definition.Level == 1).Value = 2_500_000;
+        var plugIn = fixture.GameServerContext.PlugInManager.GetActivePlugInsOf<IPeriodicTaskPlugIn>().OfType<CastleSiegePlugIn>().Single();
+        await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+        var context = plugIn.GetContext(fixture.GameServerContext);
+        try
+        {
+            var (player, output) = CastleSiegeRemoteViewTestHelper.CreatePlayer(fixture.GameServerContext);
+            await new CastleSiegeNpcOperationResultPlugIn(player).ShowUpgradeResultAsync(CastleSiegeNpcOperationResult.Success, (uint)monsterNumber, 1, upgradeType, 1).ConfigureAwait(false);
+            var packet = new CastleSiegeDefenseUpgradeResponse(output.ToArray());
+            Assert.Multiple(() =>
+            {
+                Assert.That(context, Is.Not.Null);
+                Assert.That(packet.Result, Is.EqualTo((byte)CastleSiegeNpcOperationResult.Success));
+                Assert.That(packet.NpcUpgradeType, Is.EqualTo((uint)upgradeType));
+                Assert.That(packet.NpcUpgradeValue, Is.EqualTo(expectedValue));
+            });
+        }
+        finally
+        {
+            if (context is not null)
+            {
+                await context.NpcController.DespawnAllAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
     /// <summary>
     /// Verifies canonical gate-state bytes after reusing output memory filled with unrelated data.
     /// </summary>

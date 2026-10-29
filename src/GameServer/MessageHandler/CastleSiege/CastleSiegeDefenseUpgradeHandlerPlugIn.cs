@@ -43,12 +43,11 @@ internal sealed class CastleSiegeDefenseUpgradeHandlerPlugIn : ISubPacketHandler
                    && Enum.IsDefined((CastleSiegeUpgradeType)(byte)request.NpcUpgradeType)
             ? (CastleSiegeUpgradeType)(byte)request.NpcUpgradeType
             : (CastleSiegeUpgradeType)byte.MaxValue;
-        var requestedLevel = request.NpcUpgradeValue <= byte.MaxValue
-            ? (byte)request.NpcUpgradeValue
-            : byte.MaxValue;
+        var context = CastleSiegeHandlerContext.Get(player);
+        var requestedLevel = CastleSiegeUpgradeValueAdapter.GetRequestedLevel(context?.Configuration, request.NpcNumber, type, request.NpcUpgradeValue);
         await CastleSiegeNpcUpgradeAction.UpgradeAsync(
                 player,
-                CastleSiegeHandlerContext.Get(player),
+                context,
                 request.NpcNumber,
                 request.NpcIndex,
                 type,

@@ -47,6 +47,99 @@ public class CastleSiegeNpcTests
     private const byte GateY = 50;
 
     /// <summary>
+    /// Verifies that Senior life requests carry configured maximum health, with invalid and replayed requests charging nothing.
+    /// </summary>
+    /// <param name="monsterNumber">The gate or statue monster number.</param>
+    [TestCase((short)277)]
+    [TestCase((short)283)]
+    public async ValueTask SeniorLifeUpgradeUsesConfiguredHealthValueAsync(short monsterNumber)
+    {
+        var fixture = await CreateFixtureAsync().ConfigureAwait(false);
+        CastleSiegeContext? context = null;
+        try
+        {
+            var definitions = fixture.Configuration.GetUpgrades(monsterNumber, CastleSiegeUpgradeType.Life)!;
+            definitions.Single(definition => definition.Level == 1).Value = 2_500_000;
+            definitions.Add(new BasicModel.CastleSiegeUpgradeDefinition { Level = 2, Value = 3_000_000, RequiredZen = 200, RequiredJewelOfGuardianCount = 2 });
+            var plugIn = fixture.GameServerContext.PlugInManager.GetActivePlugInsOf<IPeriodicTaskPlugIn>().OfType<CastleSiegePlugIn>().Single();
+            await plugIn.ExecuteTaskAsync(fixture.GameServerContext).ConfigureAwait(false);
+            context = plugIn.GetContext(fixture.GameServerContext)!;
+            context.CurrentState = CastleSiegeState.Ready;
+            Assert.That(fixture.Player.GameContext, Is.SameAs(fixture.GameServerContext));
+            Assert.That(fixture.GameServerContext.PlugInManager.GetActivePlugInsOf<IPeriodicTaskPlugIn>().OfType<CastleSiegePlugIn>().Single(), Is.SameAs(plugIn));
+            Assert.That(CastleSiegeHandlerContext.Get(fixture.Player), Is.SameAs(context), "The real handler must resolve this initialized siege context.");
+            Assert.That(context.Configuration.Enabled, Is.True);
+            fixture.Player.OpenedNpc = new NonPlayerCharacter(null!, new MonsterDefinition { Number = 223 }, null!);
+            fixture.Player.Money = 1_000;
+            await AddGuardianJewelsAsync(fixture, 3).ConfigureAwait(false);
+            var runtime = context.NpcController.FindDefenseStructure((uint)monsterNumber, 1)!;
+            var originalHealth = runtime.PersistedState!.CurrentHp;
+            var handler = new CastleSiegeDefenseUpgradeHandlerPlugIn();
+            var packet = new byte[MUnique.OpenMU.Network.Packets.ClientToServer.CastleSiegeDefenseUpgradeRequest.Length];
+            var request = new MUnique.OpenMU.Network.Packets.ClientToServer.CastleSiegeDefenseUpgradeRequest(packet)
+            {
+                NpcNumber = (uint)monsterNumber,
+                NpcIndex = 1,
+                NpcUpgradeType = (uint)CastleSiegeUpgradeType.Life,
+            };
+            var view = Mock.Get(fixture.Player.ViewPlugIns.GetPlugIn<ICastleSiegeNpcOperationResultPlugIn>()!);
+            foreach (var invalidValue in new uint[] { 0, 1, 2_500_001, 3_000_000, uint.MaxValue })
+            {
+                request.NpcUpgradeValue = invalidValue;
+                view.Invocations.Clear();
+                await handler.HandlePacketAsync(fixture.Player, packet).ConfigureAwait(false);
+                Assert.Multiple(() =>
+                {
+                    Assert.That(fixture.Player.Money, Is.EqualTo(1_000), $"Invalid wire value {invalidValue}");
+                    Assert.That(fixture.Player.Inventory!.Items.Count(), Is.EqualTo(3));
+                    Assert.That(runtime.PersistedState.LifeLevel, Is.Zero);
+                    Assert.That(runtime.PersistedState.CurrentHp, Is.EqualTo(originalHealth));
+                });
+                view.Verify(value => value.ShowUpgradeResultAsync(CastleSiegeNpcOperationResult.InvalidUpgradeValue, (uint)monsterNumber, 1, CastleSiegeUpgradeType.Life, It.IsAny<byte>()), Times.Once);
+            }
+
+            request.NpcUpgradeValue = 2_500_000;
+            view.Invocations.Clear();
+            await handler.HandlePacketAsync(fixture.Player, packet).ConfigureAwait(false);
+            view.Verify(value => value.ShowUpgradeResultAsync(CastleSiegeNpcOperationResult.Success, (uint)monsterNumber, 1, CastleSiegeUpgradeType.Life, 1), Times.Once);
+            Assert.Multiple(() =>
+            {
+                Assert.That(fixture.Player.Money, Is.EqualTo(900));
+                Assert.That(fixture.Player.Inventory!.Items.Count(), Is.EqualTo(2));
+                Assert.That(runtime.PersistedState.LifeLevel, Is.EqualTo(1));
+                Assert.That(runtime.PersistedState.CurrentHp, Is.EqualTo(2_500_000));
+            });
+
+            definitions.Add(new BasicModel.CastleSiegeUpgradeDefinition { Level = 3, Value = 3_000_000 });
+            foreach (var invalidValue in new uint[] { 0, 1, 2_500_000, 2_500_001, 3_000_000, uint.MaxValue })
+            {
+                request.NpcUpgradeValue = invalidValue;
+                view.Invocations.Clear();
+                await handler.HandlePacketAsync(fixture.Player, packet).ConfigureAwait(false);
+                view.Verify(value => value.ShowUpgradeResultAsync(CastleSiegeNpcOperationResult.InvalidUpgradeValue, (uint)monsterNumber, 1, CastleSiegeUpgradeType.Life, It.IsAny<byte>()), Times.Once);
+                Assert.That(fixture.Player.Money, Is.EqualTo(900));
+                Assert.That(fixture.Player.Inventory!.Items.Count(), Is.EqualTo(2));
+            }
+            using var read = fixture.PersistenceContextProvider.CreateNewContext();
+            var saved = (await read.GetAsync<CastleSiegeData>().ConfigureAwait(false)).Single().NpcStates.Single(state => state.MonsterNumber == monsterNumber);
+            Assert.Multiple(() =>
+            {
+                Assert.That(fixture.Player.Money, Is.EqualTo(900));
+                Assert.That(fixture.Player.Inventory!.Items.Count(), Is.EqualTo(2));
+                Assert.That(saved.LifeLevel, Is.EqualTo(1));
+                Assert.That(saved.CurrentHp, Is.EqualTo(2_500_000));
+            });
+        }
+        finally
+        {
+            if (context is not null)
+            {
+                await context.NpcController.DespawnAllAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
     /// Verifies that a known noncommitting NPC save rejection cannot charge the player or publish a successful mutation.
     /// </summary>
     /// <param name="operation">The requested operation.</param>

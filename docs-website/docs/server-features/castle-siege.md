@@ -38,3 +38,9 @@ siege portals keep their existing rules.
 The Lorencia entrance uses walkable landing tiles. Existing Season 6 databases
 receive this correction through version 4 of the Castle Siege data update;
 customized landing rectangles are preserved.
+
+The castle owner's officers can upgrade gates and Guardian Statues through the
+Castle Senior outside the battle. Life upgrades use the configured target
+maximum health, as expected by the original Season 6 client. The server charges
+the configured Zen and Jewels of Guardian for the next level only; replaying an
+already completed upgrade does not charge again.
