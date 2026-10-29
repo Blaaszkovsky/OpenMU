@@ -48,6 +48,7 @@ public class MapComponentTests
     [Test]
     public async Task ControllerCreatedAfterDisposalIsDisposedAsync()
     {
+        var creationStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var creation = new TaskCompletionSource<IMapController>(TaskCreationOptions.RunContinuationsAsynchronously);
         var controllerDisposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var controller = new Mock<IMapController>();
@@ -59,12 +60,17 @@ public class MapComponentTests
         var factory = new Mock<IMapFactory>();
         factory.Setup(f => f.GetMapContainerIdentifier(It.IsAny<int>(), It.IsAny<Guid>())).Returns("map_0");
         factory.Setup(f => f.CreateMapAsync(It.IsAny<IObservableGameServer>(), It.IsAny<Guid>()))
-            .Returns(() => new ValueTask<IMapController>(creation.Task));
+            .Returns(() =>
+            {
+                creationStarted.TrySetResult();
+                return new ValueTask<IMapController>(creation.Task);
+            });
         this._context.Services.AddSingleton(factory.Object);
 
         this._context.Render<MapComponent>(parameters => parameters
             .Add(p => p.Server, new Mock<IObservableGameServer>().Object)
             .Add(p => p.MapId, Guid.NewGuid()));
+        await creationStarted.Task.WaitAsync(Timeout).ConfigureAwait(false);
         factory.Verify(f => f.CreateMapAsync(It.IsAny<IObservableGameServer>(), It.IsAny<Guid>()), Times.Once);
 
         await this._context.DisposeComponentsAsync().ConfigureAwait(false);
