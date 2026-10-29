@@ -44,3 +44,12 @@ Castle Senior outside the battle. Life upgrades use the configured target
 maximum health, as expected by the original Season 6 client. The server charges
 the configured Zen and Jewels of Guardian for the next level only; replaying an
 already completed upgrade does not charge again.
+
+## Player kills during the battle
+
+During the battle, players of different siege sides may attack and kill each
+other without becoming outlaws, and the attacks don't start the self-defense.
+The attacking sides are enemies of each other as well as of the defenders.
+This applies only on the Castle Siege map and only to players with a siege
+side. Killing a player of the own side, or any player outside the battle, is
+still a normal player kill.

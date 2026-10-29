@@ -223,6 +223,24 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        /// Wyszukuje zlokalizowany ciąg podobny do ciągu Adds the Crystal Sword ice chance, which turns an attack into an ice skill instead..
+        /// </summary>
+        public static string AddCrystalSwordIceChanceUpdatePlugIn_Description {
+            get {
+                return ResourceManager.GetString("AddCrystalSwordIceChanceUpdatePlugIn_Description", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        /// Wyszukuje zlokalizowany ciąg podobny do ciągu Add Crystal Sword Ice Chance.
+        /// </summary>
+        public static string AddCrystalSwordIceChanceUpdatePlugIn_Name {
+            get {
+                return ResourceManager.GetString("AddCrystalSwordIceChanceUpdatePlugIn_Name", resourceCulture);
+            }
+        }
+
+        /// <summary>
         /// Wyszukuje zlokalizowany ciąg podobny do ciągu This update adds the monsters of the crywolf event and their spawns, lets the statue and the altars of the fortress always be on the map, adds the warp entry of the fortress and the terrains of the occupation states..
         /// </summary>
         public static string AddCrywolfEventUpdatePlugIn_Description {
