@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using MUnique.OpenMU.AttributeSystem;
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.DataModel.Entities;
+using MUnique.OpenMU.DataModel.Statistics;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameLogic.MiniGames;
@@ -32,6 +33,71 @@ using MiniGameDefinition = MUnique.OpenMU.Persistence.BasicModel.MiniGameDefinit
 [TestFixture]
 public class IllusionTempleLifecycleTests
 {
+    /// <summary>A timebox winner receives the generated item before results and ranking, and cannot claim twice.</summary>
+    [Test]
+    [Timeout(90_000)]
+    public async Task NaturalEndAwardsGeneratedItemsAndSavesRankingOnceAsync()
+    {
+        await using var world = await TestWorld.CreateAsync(4, winningScore: 7, generateRewardItems: true).ConfigureAwait(false);
+        await world.StartAsync().ConfigureAwait(false);
+        var winner = world.Players[0];
+        var loser = world.Players.First(player => world.Game.GetTeam(player) != world.Game.GetTeam(winner));
+        foreach (var scorer in new[] { winner, loser, winner, winner, winner })
+        {
+            var statue = GetNpcs(world.Game).First(npc => npc.Definition.Number == 380);
+            scorer.Position = statue.Position;
+            await InteractUntilAsync(world.Game, scorer, statue, () => HasRelic(scorer), "Each score must start with an ordinary statue capture.").ConfigureAwait(false);
+            var pedestal = GetNpcs(world.Game).Single(npc => npc.Definition.Number == 383 + world.Game.GetTeam(scorer));
+            scorer.Position = pedestal.Position;
+            await InteractUntilAsync(world.Game, scorer, pedestal, () => !HasRelic(scorer), "Each score must use an ordinary podium deposit.").ConfigureAwait(false);
+            await WaitUntilAsync(() => GetNpcs(world.Game).Count(npc => npc.Definition.Number == 380) == 2, TimeSpan.FromSeconds(5), "A completed score must restore both statues.").ConfigureAwait(false);
+        }
+
+        Assert.That(world.Game.State, Is.EqualTo(MiniGameState.Playing), "4:1 must not reach the seven-point early finish threshold.");
+        foreach (var player in world.Players)
+        {
+            Mock.Get(player.ViewPlugIns.GetPlugIn<IItemAppearPlugIn>()!).Invocations.Clear();
+        }
+
+        // Expire only the match clock: retain the real StopAsync, automatic claim, result, and ranking path.
+        typeof(MiniGameContext).GetMethod("FinishEvent", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(world.Game, null);
+        using var rankings = world.Context.PersistenceContextProvider.CreateNewTypedContext(typeof(MiniGameRankingEntry), false, world.Context.Configuration);
+        IReadOnlyList<MiniGameRankingEntry> entries = [];
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (entries.Count != 4 && DateTime.UtcNow < deadline)
+        {
+            entries = (await rankings.GetAsync<MiniGameRankingEntry>().ConfigureAwait(false)).ToList();
+            await Task.Delay(20).ConfigureAwait(false);
+        }
+
+        Assert.That(entries, Has.Count.EqualTo(4), "The normal end must complete rewards and save all four ranking entries.");
+
+        Assert.That(entries.Select(entry => entry.GameInstanceId).Distinct().Count(), Is.EqualTo(1));
+        foreach (var player in world.Players)
+        {
+            var isWinner = world.Game.GetTeam(player) == world.Game.GetTeam(winner);
+            var itemsBefore = player.Inventory!.Items.Where(item => item.Definition is { Group: 12, Number: 15 }).ToArray();
+            var experienceBefore = player.SelectedCharacter!.Experience;
+            Assert.That(itemsBefore.Length, Is.EqualTo(isWinner ? 1 : 0));
+            var ranking = entries.Single(entry => entry.Character == player.SelectedCharacter);
+            Assert.That((ranking.Rank, ranking.Score), Is.EqualTo(isWinner ? (1, 4) : (2, 1)));
+            Mock.Get(player.ViewPlugIns.GetPlugIn<IIllusionTempleViewPlugIn>()!).Verify(
+                view => view.ShowResultAsync(It.IsAny<byte>(), It.IsAny<byte>(), It.Is<IReadOnlyList<(Player Player, byte Team, int Experience)>>(results => results.Count == 4)), Times.Once);
+            if (isWinner)
+            {
+                Assert.That(itemsBefore.Single(), Is.Not.InstanceOf<TemporaryItem>());
+                Mock.Get(player.ViewPlugIns.GetPlugIn<IItemAppearPlugIn>()!).Verify(view => view.ItemAppearAsync(itemsBefore.Single()), Times.Once);
+            }
+
+            await world.Game.ClaimRewardAsync(player).ConfigureAwait(false);
+            Assert.That(player.Inventory.Items.Where(item => item.Definition is { Group: 12, Number: 15 }), Is.EquivalentTo(itemsBefore));
+            Assert.That(player.SelectedCharacter.Experience, Is.EqualTo(experienceBefore));
+        }
+
+        Assert.That(GetDrops(world.Game), Is.Empty);
+        Assert.That((await rankings.GetAsync<MiniGameRankingEntry>().ConfigureAwait(false)).Count(), Is.EqualTo(4));
+    }
+
     /// <summary>A detached NPC channel must reacquire the player's persistence lock before changing its inventory.</summary>
     /// <param name="deposit">Whether to deposit an already captured relic instead of capturing a new one.</param>
     [TestCase(false)]
@@ -637,7 +703,7 @@ public class IllusionTempleLifecycleTests
 
         public IllusionTempleContext Game { get; private set; } = null!;
 
-        public static async ValueTask<TestWorld> CreateAsync(int playerCount, TimeSpan? itemDropDuration = null, byte winningScore = 2, byte? infoRange = null)
+        public static async ValueTask<TestWorld> CreateAsync(int playerCount, TimeSpan? itemDropDuration = null, byte winningScore = 2, byte? infoRange = null, bool generateRewardItems = false)
         {
             var provider = new InMemoryPersistenceContextProvider();
             await new Persistence.Initialization.VersionSeasonSix.DataInitialization(provider, NullLoggerFactory.Instance)
@@ -659,7 +725,7 @@ public class IllusionTempleLifecycleTests
             definition.MaximumPlayerCount = 10;
             definition.EnterDuration = TimeSpan.FromSeconds(30);
             definition.GameDuration = TimeSpan.FromMinutes(3);
-            definition.ExitDuration = TimeSpan.Zero;
+            definition.ExitDuration = generateRewardItems ? TimeSpan.FromMinutes(1) : TimeSpan.Zero;
 
             // Fixture-only compression: keep initialized maps, tickets, NPC definitions, player actions, and rewards,
             // while shortening channel/effect/drop timers and choosing the score threshold. StartAsync skips lobby/countdown waits.
@@ -687,7 +753,7 @@ public class IllusionTempleLifecycleTests
             plugIns.RegisterPlugInAtPlugInPoint<IPeriodicMiniGameStartPlugIn>(startPlugIn);
             plugIns.RegisterPlugInAtPlugInPoint<IAttackableGotKilledPlugIn>(eventPlugIn);
             plugIns.RegisterPlugInAtPlugInPoint<IPlayerSpawnGateSelectionPlugIn>(eventPlugIn);
-            var drops = NullDropGenerator.Instance;
+            IDropGenerator drops = generateRewardItems ? new DefaultDropGenerator(configuration, Rand.GetRandomizer()) : NullDropGenerator.Instance;
             var mediator = new ConfigurationChangeMediator();
             var initializer = new MapInitializer(configuration, NullLogger<MapInitializer>.Instance, drops, mediator);
             var gameContext = new GameContext(configuration, provider, initializer, NullLoggerFactory.Instance, plugIns, drops, mediator);
