@@ -413,7 +413,7 @@ public class CastleSiegeGuildSelectionTests
         await CastleSiegeGuildSelector.SelectGuildsAsync(fixture.Context).ConfigureAwait(false);
         var store = new CastleSiegeStateMachineTests.DetachedSiegeStore(fixture.PersistenceContextProvider);
         var active = await CreatePeerContextAsync(fixture, store.Provider).ConfigureAwait(false);
-        var plugin = new CastleSiegePlugIn(new FixtureTimeProvider(fixture.InitializationTimeUtc));
+        var plugin = new CastleSiegePlugIn(new FixtureTimeProvider(fixture.InitializationTimeUtc.AddDays(1)));
         var follower = await CreatePeerContextAsync(fixture, store.Provider, plugin).ConfigureAwait(false);
         var capturingPlayer = await CreateSiegePlayerAsync(fixture, AlphaGuildId, "CaptureA").ConfigureAwait(false);
         follower.SiegeData.TaxChaos = 3;
@@ -530,7 +530,16 @@ public class CastleSiegeGuildSelectionTests
         var fixture = await CreateFixtureAsync().ConfigureAwait(false);
         await CastleSiegeGuildSelector.SelectGuildsAsync(fixture.Context).ConfigureAwait(false);
         fixture.Context.CurrentState = CastleSiegeState.Start;
-        fixture.Context.MiddleOwnerGuildId = fixture.AlphaPersistentGuildId;
+        await using var capturingPlayer = await CreateSiegePlayerAsync(fixture, AlphaGuildId, "Capturer").ConfigureAwait(false);
+        await CastleSiegeCrownMechanics.ChangeWinnerGuildAsync(fixture.Context, capturingPlayer, CastleSiegeJoinSide.Attack1).ConfigureAwait(false);
+        await capturingPlayer.DisconnectAsync().ConfigureAwait(false);
+        var onlinePlayers = await fixture.GameServerContext.GetPlayersAsync().ConfigureAwait(false);
+        Assert.Multiple(() =>
+        {
+            Assert.That(fixture.Context.SiegeData.OwnerGuildId, Is.EqualTo(fixture.AlphaPersistentGuildId));
+            Assert.That(onlinePlayers, Does.Not.Contain(capturingPlayer));
+            Assert.That(fixture.Context.GetSiegePlayers(), Does.Not.Contain(capturingPlayer));
+        });
         await CreateSiegePlayerAsync(fixture, ReconnectedAlphaGuildId, "Fighter").ConfigureAwait(false);
 
         await fixture.Context.SetPlayerJoinSideAsync().ConfigureAwait(false);
@@ -554,7 +563,16 @@ public class CastleSiegeGuildSelectionTests
         var fixture = await CreateFixtureAsync().ConfigureAwait(false);
         await CastleSiegeGuildSelector.SelectGuildsAsync(fixture.Context).ConfigureAwait(false);
         fixture.Context.CurrentState = CastleSiegeState.Start;
-        fixture.Context.MiddleOwnerGuildId = fixture.AlphaPersistentGuildId;
+        await using var capturingPlayer = await CreateSiegePlayerAsync(fixture, AlphaGuildId, "Capturer").ConfigureAwait(false);
+        await CastleSiegeCrownMechanics.ChangeWinnerGuildAsync(fixture.Context, capturingPlayer, CastleSiegeJoinSide.Attack1).ConfigureAwait(false);
+        await capturingPlayer.DisconnectAsync().ConfigureAwait(false);
+        var onlinePlayers = await fixture.GameServerContext.GetPlayersAsync().ConfigureAwait(false);
+        Assert.Multiple(() =>
+        {
+            Assert.That(fixture.Context.SiegeData.OwnerGuildId, Is.EqualTo(fixture.AlphaPersistentGuildId));
+            Assert.That(onlinePlayers, Does.Not.Contain(capturingPlayer));
+            Assert.That(fixture.Context.GetSiegePlayers(), Does.Not.Contain(capturingPlayer));
+        });
         var selectedGuilds = fixture.Context.FinalGuildList.ToDictionary(pair => pair.Key, pair => pair.Value);
         var persistentGuildIdLookup = new TaskCompletionSource<Guid?>(TaskCreationOptions.RunContinuationsAsynchronously);
         fixture.GuildServer

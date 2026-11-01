@@ -1126,4 +1126,22 @@ Extensões de inventário: {18}</value>
   <data name="MapIsNotActive" xml:space="preserve">
     <value>Este mapa não está disponível.</value>
   </data>
+  <data name="FereaEncounterStarted" xml:space="preserve">
+    <value>O Orbe de Cristal foi destruído. Derrote o Lorde de Ferea!</value>
+  </data>
+  <data name="FereaGeneralSummoned" xml:space="preserve">
+    <value>O General de Ferea protege o Lorde. Derrote o General para interromper a recuperação do Lorde!</value>
+  </data>
+  <data name="FereaGeneralDefeated" xml:space="preserve">
+    <value>O General foi derrotado. O Lorde de Ferea está vulnerável novamente.</value>
+  </data>
+  <data name="FereaMineWarning" xml:space="preserve">
+    <value>O Lorde colocou minas sob seus pés. Afaste-se!</value>
+  </data>
+  <data name="FereaEncounterVictory" xml:space="preserve">
+    <value>O Lorde de Ferea foi derrotado!</value>
+  </data>
+  <data name="FereaEncounterReset" xml:space="preserve">
+    <value>A batalha em Ferea terminou. A arena será aberta novamente.</value>
+  </data>
 </root>
