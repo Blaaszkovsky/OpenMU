@@ -412,9 +412,17 @@ public class CastleSiegeGuildSelectionTests
         var fixture = await CreateFixtureAsync().ConfigureAwait(false);
         await CastleSiegeGuildSelector.SelectGuildsAsync(fixture.Context).ConfigureAwait(false);
         var store = new CastleSiegeStateMachineTests.DetachedSiegeStore(fixture.PersistenceContextProvider);
+        Mock.Get(store.Provider)
+            .Setup(provider => provider.CreateNewPlayerContext(It.IsAny<GameConfiguration>()))
+            .Returns<GameConfiguration>(configuration => fixture.PersistenceContextProvider.CreateNewPlayerContext(configuration));
         var active = await CreatePeerContextAsync(fixture, store.Provider).ConfigureAwait(false);
         var plugin = new CastleSiegePlugIn(new FixtureTimeProvider(fixture.InitializationTimeUtc.AddDays(1)));
         var follower = await CreatePeerContextAsync(fixture, store.Provider, plugin).ConfigureAwait(false);
+        Assert.Multiple(() =>
+        {
+            Assert.That(follower.CurrentState, Is.EqualTo(CastleSiegeState.Notify));
+            Assert.That(follower.FinalGuildList.Keys, Is.EquivalentTo(fixture.Context.FinalGuildList.Keys));
+        });
         var capturingPlayer = await CreateSiegePlayerAsync(fixture, AlphaGuildId, "CaptureA").ConfigureAwait(false);
         follower.SiegeData.TaxChaos = 3;
         follower.SiegeData.TaxStore = 2;
