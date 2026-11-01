@@ -97,7 +97,7 @@ public static class CastleSiegeCrownMechanics
         CastleSiegeJoinSide capturingSide)
     {
         if (crownUser.GuildStatus is not { } guildStatus
-            || !context.FinalGuildList.TryGetValue(guildStatus.GuildId, out var capturingGuild)
+            || context.GetFinalGuild(guildStatus.GuildId) is not { } capturingGuild
             || !IsAttackingSide(capturingSide)
             || capturingGuild.Side != capturingSide)
         {
@@ -115,7 +115,7 @@ public static class CastleSiegeCrownMechanics
         bool ownershipChanged;
         try
         {
-            context.MiddleOwnerGuildId = winnerGuild.GuildId;
+            context.MiddleOwnerGuildId = winnerGuild.PersistentGuildId;
             foreach (var guild in context.FinalGuildList.Values)
             {
                 if (guild.Side == capturingSide)
@@ -188,7 +188,7 @@ public static class CastleSiegeCrownMechanics
         // End must use the committed owner rather than replaying that stale intermediate assignment.
         await context.SaveOwnerAsync().ConfigureAwait(false);
         var winner = context.FinalGuildList.Values.FirstOrDefault(guild => guild.PersistentGuildId == context.SiegeData.OwnerGuildId);
-        context.MiddleOwnerGuildId = winner?.GuildId;
+        context.MiddleOwnerGuildId = winner?.PersistentGuildId;
         var ownerName = await GetOwnerGuildNameAsync(context).ConfigureAwait(false) ?? string.Empty;
         await BroadcastOwnershipChangeAsync(context, ownerName).ConfigureAwait(false);
     }
@@ -314,9 +314,7 @@ public static class CastleSiegeCrownMechanics
             return null;
         }
 
-        var selectedOwner = context.FinalGuildList.Values
-            .FirstOrDefault(guild => guild.PersistentGuildId == ownerGuildId);
-        if (selectedOwner is not null)
+        if (context.FinalGuildList.TryGetValue(ownerGuildId, out var selectedOwner))
         {
             return selectedOwner.GuildName;
         }

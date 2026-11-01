@@ -202,7 +202,6 @@ internal sealed class MiniGameRewardService
                 && inventory.CheckInvSpace(item) is { } slot
                 && await inventory.AddItemAsync(slot, item).ConfigureAwait(false))
             {
-                // The slot overload converts temporary drops through the player's persistence factory.
                 var inventoryItem = inventory.GetItem(slot)!;
                 await player.InvokeViewPlugInAsync<IItemAppearPlugIn>(view => view.ItemAppearAsync(inventoryItem)).ConfigureAwait(false);
                 continue;

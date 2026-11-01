@@ -12,6 +12,7 @@ using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.GameLogic.CastleSiege.NPC;
 using MUnique.OpenMU.GameLogic.PlugIns;
 using MUnique.OpenMU.GameLogic.Views.CastleSiege;
+using MUnique.OpenMU.Pathfinding;
 using MUnique.OpenMU.PlugIns;
 
 /// <summary>
@@ -19,11 +20,13 @@ using MUnique.OpenMU.PlugIns;
 /// </summary>
 /// <remarks>
 /// During the battle, the attacks and kills between players of opposing sides are exempted from the player killer penalty.
+/// During the battle, players of the same side can't damage each other.
+/// Players can't teleport over a closed gate with a skill.
 /// </remarks>
 [PlugIn]
 [Display(Name = nameof(PlugInResources.CastleSiegePlugIn_Name), Description = nameof(PlugInResources.CastleSiegePlugIn_Description), ResourceType = typeof(PlugInResources))]
 [Guid("B7F62FA9-59E6-49E9-B499-0358A14957CF")]
-public class CastleSiegePlugIn : IPeriodicTaskPlugIn, IObjectAddedToMapPlugIn, IObjectRemovedFromMapPlugIn, IPlayerStateChangedPlugIn, IPlayerSpawnGateSelectionPlugIn, IWarpGateEnteringPlugIn, IPlayerEnteringWorldPlugIn, IPlayerKillPenaltyExemptionPlugIn
+public class CastleSiegePlugIn : IPeriodicTaskPlugIn, IObjectAddedToMapPlugIn, IObjectRemovedFromMapPlugIn, IPlayerStateChangedPlugIn, IPlayerSpawnGateSelectionPlugIn, IWarpGateEnteringPlugIn, IPlayerEnteringWorldPlugIn, IPlayerKillPenaltyExemptionPlugIn, IPlayerTeleportRestrictionPlugIn, IPlayerAttackRestrictionPlugIn
 {
     private const short ThroneRoomEntryGateNumber = 96;
     private static readonly TimeSpan EconomySaveInterval = TimeSpan.FromSeconds(30);
@@ -243,12 +246,33 @@ public class CastleSiegePlugIn : IPeriodicTaskPlugIn, IObjectAddedToMapPlugIn, I
     }
 
     /// <inheritdoc />
+    public void CheckAttack(Player attacker, Player defender, CancelEventArgs eventArgs)
+    {
+        if (this.GetContext(attacker.GameContext) is { } context
+            && context.AreOnSameSide(attacker, defender))
+        {
+            eventArgs.Cancel = true;
+        }
+    }
+
+    /// <inheritdoc />
     public void CheckExemption(Player attacker, Player defender, PlayerKillPenaltyExemptionArgs eventArgs)
     {
         if (this.GetContext(attacker.GameContext) is { } context
             && context.AreOnOpposingSides(attacker, defender))
         {
             eventArgs.IsExempted = true;
+        }
+    }
+
+    /// <inheritdoc />
+    public void CheckTeleport(Player player, Point target, CancelEventArgs eventArgs)
+    {
+        if (this.GetContext(player.GameContext) is { } context
+            && player.CurrentMap?.Definition.Number == context.Configuration.CastleSiegeMapDefinition?.Number
+            && context.NpcController.IsLineBlockedByClosedGate(player.Position, target))
+        {
+            eventArgs.Cancel = true;
         }
     }
 
@@ -324,6 +348,7 @@ public class CastleSiegePlugIn : IPeriodicTaskPlugIn, IObjectAddedToMapPlugIn, I
             if (!context.IsInitialized)
             {
                 await context.InitializeAsync(utcNow).ConfigureAwait(false);
+                await CleanUpMissedCycleEndAsync(context, logger).ConfigureAwait(false);
                 context.NextEconomySaveUtc = utcNow + EconomySaveInterval;
                 this.ConfigureNotifications(context, utcNow);
                 await this.BroadcastStateUpdateAsync(context).ConfigureAwait(false);
@@ -396,6 +421,32 @@ public class CastleSiegePlugIn : IPeriodicTaskPlugIn, IObjectAddedToMapPlugIn, I
             ? player.InvokeViewPlugInAsync<ICastleSiegeStatusPlugIn>(view => view.ShowRemainingTimeAsync(
                 context.CurrentState == CastleSiegeState.Start ? context.RemainingTime : TimeSpan.Zero))
             : ValueTask.CompletedTask;
+
+    /// <summary>
+    /// Clears the registrations and the selected guilds of the previous cycle, if the server
+    /// wasn't running when that cycle ended.
+    /// </summary>
+    /// <remarks>
+    /// The selected guilds are only persisted from <see cref="CastleSiegeState.Notify"/> until <see cref="CastleSiegeState.EndCycle"/>,
+    /// so finding them in an earlier state of a cycle means the clean-up of <see cref="CastleSiegeState.EndCycle"/> never ran.
+    /// A cycle which ended without selecting guilds leaves no such trace, so its registrations can't be told apart from new ones.
+    /// </remarks>
+    private static async ValueTask CleanUpMissedCycleEndAsync(CastleSiegeContext context, ILogger logger)
+    {
+        if (context.CurrentState >= CastleSiegeState.Notify
+            || context.SiegeData.Guilds.Count == 0)
+        {
+            return;
+        }
+
+        logger.LogWarning(
+            "Castle Siege started in state {state} with {count} selected guilds of the previous cycle; the server wasn't running at its end. Clearing the registrations and selected guilds.",
+            context.CurrentState,
+            context.SiegeData.Guilds.Count);
+        await context.ClearRegistrationsAsync().ConfigureAwait(false);
+        context.FinalGuildList.Clear();
+        await context.SaveFinalGuildListAsync().ConfigureAwait(false);
+    }
 
     private static TimeSpan? GetNotificationInterval(CastleSiegeState state)
     {

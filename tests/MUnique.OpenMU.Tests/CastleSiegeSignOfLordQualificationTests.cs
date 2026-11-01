@@ -112,7 +112,7 @@ public class CastleSiegeSignOfLordQualificationTests
         Assert.Multiple(() =>
         {
             Assert.That(context.FinalGuildList, Has.Count.EqualTo(1));
-            Assert.That(context.FinalGuildList[runtimeGuildId].Side, Is.EqualTo(CastleSiegeJoinSide.Attack1));
+            Assert.That(context.GetSelectedGuild(runtimeGuildId).Side, Is.EqualTo(CastleSiegeJoinSide.Attack1));
         });
         using var reloaded = persistence.CreateNewTypedContext(typeof(CastleSiegeGuildRegistration), false, configuration);
         Assert.That((await reloaded.GetAsync<CastleSiegeGuildRegistration>().ConfigureAwait(false)).Single().Marks, Is.EqualTo(1));

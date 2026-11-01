@@ -4,7 +4,8 @@
 
 namespace MUnique.OpenMU.Tests.MiniGames;
 
-using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Threading;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using MUnique.OpenMU.DataModel;
@@ -13,10 +14,10 @@ using MUnique.OpenMU.DataModel.Entities;
 using MUnique.OpenMU.GameLogic;
 using MUnique.OpenMU.GameLogic.MiniGames;
 using MUnique.OpenMU.GameLogic.PlayerActions.Items;
+using MUnique.OpenMU.GameLogic.PlugIns;
 using MUnique.OpenMU.GameLogic.Views.Inventory;
 using MUnique.OpenMU.Pathfinding;
 using MUnique.OpenMU.Persistence;
-using MUnique.OpenMU.Persistence.InMemory;
 using MUnique.OpenMU.PlugIns;
 using BasicModel = MUnique.OpenMU.Persistence.BasicModel;
 using EfModel = MUnique.OpenMU.Persistence.EntityFramework.Model;
@@ -25,6 +26,71 @@ using EfModel = MUnique.OpenMU.Persistence.EntityFramework.Model;
 [TestFixture]
 public class MiniGameRewardServiceTests
 {
+    /// <summary>A detached event loop must not inherit the admitting player's persistence-lock ownership.</summary>
+    /// <param name="flowAlreadySuppressed">Whether the caller has already suppressed execution-context flow.</param>
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task DetachedGameLoopWaitsForAdmittingPlayersPersistenceOperationAsync(bool flowAlreadySuppressed)
+    {
+        await using var world = await RewardWorld.CreateAsync().ConfigureAwait(false);
+        world.Reward.RewardType = MiniGameRewardType.Score;
+        world.Reward.RewardAmount = 1;
+        var attempted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completed = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observer = new EntranceObserver(async miniGame =>
+        {
+            Assert.That(miniGame.GameContext, Is.SameAs(world.Player.GameContext));
+            var reward = world.Service.GiveRewardsAndGetBonusScoreAsync(world.Player, 1);
+            attempted.TrySetResult(reward.IsCompleted);
+            var result = await reward.ConfigureAwait(false);
+            completed.TrySetResult(result.BonusScore);
+        });
+        world.Player.GameContext.PlugInManager.RegisterPlugInAtPlugInPoint<IMiniGameEntranceOpenedPlugIn>(observer);
+        var definition = new BasicModel.MiniGameDefinition
+        {
+            Entrance = new BasicModel.ExitGate { Map = world.Player.CurrentMap!.Definition },
+            EnterDuration = TimeSpan.FromHours(1),
+        };
+        var initializer = new Mock<IMapInitializer>();
+        initializer.Setup(value => value.CreateGameMap(It.IsAny<GameMapDefinition>()))
+            .Returns<GameMapDefinition>(map => new GameMap(map, TimeSpan.FromMinutes(1), 16));
+        await using var game = new MiniGameContext(new MiniGameMapKey(0, 0, string.Empty), definition, world.Player.GameContext, initializer.Object);
+
+        await world.Player.RunPersistenceExclusiveAsync(async () =>
+        {
+            if (flowAlreadySuppressed)
+            {
+                using (ExecutionContext.SuppressFlow())
+                {
+                    game.EnsureGameLoopRunning();
+                }
+            }
+            else
+            {
+                game.EnsureGameLoopRunning();
+            }
+            var completedUnderPacketLock = await attempted.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            Assert.That(completedUnderPacketLock, Is.False, "The detached loop must acquire the admitting player's real lock, not inherit its reentrancy flag.");
+        }).ConfigureAwait(false);
+
+        Assert.That(await completed.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false), Is.EqualTo(1));
+    }
+
+    /// <summary>An inline reward remains reentrant when its caller legitimately holds the same player's lock.</summary>
+    [Test]
+    public async Task InlineRewardReentersPlayersPersistenceOperationAsync()
+    {
+        await using var world = await RewardWorld.CreateAsync().ConfigureAwait(false);
+        world.Reward.RewardType = MiniGameRewardType.Score;
+        world.Reward.RewardAmount = 1;
+
+        var operation = world.Player.RunPersistenceExclusiveAsync(async () =>
+            await world.Service.GiveRewardsAndGetBonusScoreAsync(world.Player, 1).ConfigureAwait(false));
+
+        var result = await operation.AsTask().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        Assert.That(result.BonusScore, Is.EqualTo(1));
+    }
+
     /// <summary>Shared reward callers must wait for an independent save before creating or inserting tracked items.</summary>
     [Test]
     public async Task RewardWaitsForIndependentPersistenceOperationAsync()
@@ -167,18 +233,37 @@ public class MiniGameRewardServiceTests
     public async Task MissingInventoryRewardFallsBackToGroundAsync()
     {
         await using var world = await RewardWorld.CreateAsync().ConfigureAwait(false);
-        var storages = (PlayerStorages)typeof(Player).GetField("_storages", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world.Player)!;
-        typeof(PlayerStorages).GetProperty(nameof(PlayerStorages.Inventory))!.SetValue(storages, null);
+        await using var player = new Player(world.Player.GameContext)
+        {
+            CurrentMap = world.Player.CurrentMap,
+            IsAlive = true,
+        };
+        Assert.That(player.Inventory, Is.Null);
 
-        await world.Service.GiveRewardsAndGetBonusScoreAsync(world.Player, 1).ConfigureAwait(false);
+        await world.Service.GiveRewardsAndGetBonusScoreAsync(player, 1).ConfigureAwait(false);
 
-        Assert.That(world.Drops.Single().Item, Is.TypeOf<TemporaryItem>());
+        var drop = world.Drops.Single();
+        Assert.That(drop.Item, Is.TypeOf<TemporaryItem>());
+        Assert.That(drop.IsPlayerAnOwner(player), Is.True);
         Assert.That(world.CreatedItems, Is.Empty);
+    }
+
+    [Guid("5EC1574D-0BD4-427B-B7CF-D04E5F730650")]
+    private sealed class EntranceObserver : IMiniGameEntranceOpenedPlugIn
+    {
+        private readonly Func<MiniGameContext, ValueTask> _onOpened;
+
+        public EntranceObserver(Func<MiniGameContext, ValueTask> onOpened)
+        {
+            this._onOpened = onOpened;
+        }
+
+        ValueTask IMiniGameEntranceOpenedPlugIn.MiniGameEntranceOpenedAsync(MiniGameContext miniGame) => this._onOpened.Invoke(miniGame);
     }
 
     private sealed class RewardWorld : IAsyncDisposable
     {
-        private RewardWorld(Player player, EfModel.ItemStorage storage, EfModel.ItemDefinition itemDefinition, EfModel.IncreasableItemOption option, MiniGameReward reward, MiniGameRewardService service, TemporaryItem generatedSample, List<EfModel.Item> createdItems)
+        public RewardWorld(Player player, EfModel.ItemStorage storage, EfModel.ItemDefinition itemDefinition, EfModel.IncreasableItemOption option, MiniGameReward reward, MiniGameRewardService service, TemporaryItem generatedSample, List<EfModel.Item> createdItems)
         {
             this.Player = player;
             this.Storage = storage;
@@ -214,16 +299,6 @@ public class MiniGameRewardServiceTests
         {
             var configuration = PlayerTestHelper.CreateGameConfiguration();
             configuration.ItemDropDuration = TimeSpan.FromMinutes(1);
-            var initializer = new MapInitializer(configuration, NullLogger<MapInitializer>.Instance, NullDropGenerator.Instance, null);
-            var gameContext = new GameContext(configuration, new InMemoryPersistenceContextProvider(), initializer, NullLoggerFactory.Instance, new PlugInManager(null, NullLoggerFactory.Instance, null, null), NullDropGenerator.Instance, new ConfigurationChangeMediator());
-            initializer.PlugInManager = gameContext.PlugInManager;
-            initializer.PathFinderPool = gameContext.PathFinderPool;
-            gameContext.StopPeriodicTasks();
-            var player = await PlayerTestHelper.CreatePlayerAsync(gameContext).ConfigureAwait(false);
-            player.IsAlive = true;
-            var storage = new EfModel.ItemStorage { Id = Guid.NewGuid() };
-            player.SelectedCharacter!.Inventory = storage;
-            player.SelectedCharacter.InventoryExtensions = extensions;
             var createdItems = new List<EfModel.Item>();
             var persistence = new Mock<IPlayerContext>();
             persistence.Setup(context => context.CreateNew<Item>(It.IsAny<object?[]>())).Returns(() =>
@@ -232,9 +307,21 @@ public class MiniGameRewardServiceTests
                 createdItems.Add(item);
                 return item;
             });
-            typeof(Player).GetField($"<{nameof(Player.PersistenceContext)}>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(player, persistence.Object);
-            var storages = (PlayerStorages)typeof(Player).GetField("_storages", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(player)!;
-            storages.CreateForCharacter(player.SelectedCharacter);
+            var provider = new Mock<IPersistenceContextProvider> { DefaultValue = DefaultValue.Mock };
+            provider.Setup(context => context.CreateNewPlayerContext(It.IsAny<GameConfiguration>())).Returns(persistence.Object);
+            var initializer = new MapInitializer(configuration, NullLogger<MapInitializer>.Instance, NullDropGenerator.Instance, null);
+            var gameContext = new GameContext(configuration, provider.Object, initializer, NullLoggerFactory.Instance, new PlugInManager(null, NullLoggerFactory.Instance, null, null), NullDropGenerator.Instance, new ConfigurationChangeMediator());
+            initializer.PlugInManager = gameContext.PlugInManager;
+            initializer.PathFinderPool = gameContext.PathFinderPool;
+            gameContext.StopPeriodicTasks();
+            var player = await PlayerTestHelper.CreatePlayerAsync(gameContext).ConfigureAwait(false);
+            var character = player.SelectedCharacter!;
+            await player.SetSelectedCharacterAsync(null).ConfigureAwait(false);
+            var storage = new EfModel.ItemStorage { Id = Guid.NewGuid() };
+            character.Inventory = storage;
+            character.InventoryExtensions = extensions;
+            await player.SetSelectedCharacterAsync(character).ConfigureAwait(false);
+            player.IsAlive = true;
             var definition = new EfModel.ItemDefinition { Id = Guid.NewGuid(), Group = 12, Number = 15, Width = 1, Height = 1, Durability = 1, MaximumItemLevel = 15 };
             var option = new EfModel.IncreasableItemOption { Id = Guid.NewGuid() };
             var optionDefinition = new EfModel.ItemOptionDefinition { Id = Guid.NewGuid(), AddsRandomly = true, AddChance = 1, MaximumOptionsPerItem = 1 };

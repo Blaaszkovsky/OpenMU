@@ -141,7 +141,7 @@ public sealed class CastleSiegeLoginAdmissionTests
         var persistentGuild = Guid.NewGuid();
         if (side != CastleSiegeJoinSide.None || mismatch)
         {
-            context.FinalGuildList[runtimeGuild] = new CastleSiegeGuildParticipant { GuildId = runtimeGuild, GuildName = "Ordinary", PersistentGuildId = persistentGuild, Side = mismatch ? CastleSiegeJoinSide.Defense : side };
+            context.FinalGuildList[persistentGuild] = new CastleSiegeGuildParticipant { GuildId = runtimeGuild, GuildName = "Ordinary", PersistentGuildId = persistentGuild, Side = mismatch ? CastleSiegeJoinSide.Defense : side };
         }
         using (var persistence = game.PersistenceContextProvider.CreateNewContext())
         {
