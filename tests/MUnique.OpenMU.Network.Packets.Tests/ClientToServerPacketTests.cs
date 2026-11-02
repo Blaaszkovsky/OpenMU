@@ -3179,8 +3179,34 @@ public class PacketStructureTests
     public void IllusionTempleSkillRequest_PacketSizeValidation()
     {
         // Fixed-length packet validation
-        const int expectedLength = 9;
+        const int expectedLength = 8;
         var actualLength = IllusionTempleSkillRequestRef.Length;
+        
+        Assert.That(actualLength, Is.EqualTo(expectedLength), 
+            "Packet length mismatch: declared length does not match calculated size");
+        
+        // Validate field 'SkillNumber' boundary
+        Assert.That(4 + 2, Is.LessThanOrEqualTo(expectedLength), 
+            "Field 'SkillNumber' exceeds packet boundary");
+        
+        // Validate field 'TargetObjectIndex' boundary
+        Assert.That(6 + 1, Is.LessThanOrEqualTo(expectedLength), 
+            "Field 'TargetObjectIndex' exceeds packet boundary");
+        
+        // Validate field 'Distance' boundary
+        Assert.That(7 + 1, Is.LessThanOrEqualTo(expectedLength), 
+            "Field 'Distance' exceeds packet boundary");
+    }
+
+    /// <summary>
+    /// Tests the packet size calculation for IllusionTempleSkillRequestExtended.
+    /// </summary>
+    [Test]
+    public void IllusionTempleSkillRequestExtended_PacketSizeValidation()
+    {
+        // Fixed-length packet validation
+        const int expectedLength = 9;
+        var actualLength = IllusionTempleSkillRequestExtendedRef.Length;
         
         Assert.That(actualLength, Is.EqualTo(expectedLength), 
             "Packet length mismatch: declared length does not match calculated size");

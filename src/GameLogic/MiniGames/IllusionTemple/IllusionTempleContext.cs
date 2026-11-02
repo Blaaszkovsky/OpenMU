@@ -58,7 +58,17 @@ public sealed class IllusionTempleContext : MiniGameContext
     public override bool AllowPlayerKilling => true;
 
     /// <inheritdoc />
-    protected override int MinimumPlayerCount => this._settings.MinimumPlayers;
+    protected override int MinimumPlayerCount => this.Definition.MinimumPlayerCount > 0
+        ? this.Definition.MinimumPlayerCount : this._settings.MinimumPlayers;
+
+    /// <inheritdoc />
+    public override ExitGate? GetSpawnGate(Player player) => this.GetTeamSpawnGate(player);
+
+    /// <inheritdoc />
+    protected override bool IsWinner(Player player) => this.GetTeam(player) == this._winningTeam && this._winningTeam < 2;
+
+    /// <inheritdoc />
+    protected override bool IsInWinningParty(Player player) => this.IsWinner(player);
 
     /// <inheritdoc />
     protected override bool AllowDeadPlayerRejoin => true;
@@ -335,6 +345,11 @@ public sealed class IllusionTempleContext : MiniGameContext
         }
 
         await base.OnObjectRemovedFromMapAsync(args).ConfigureAwait(false);
+        if (args.Object is Player { IsAlive: true } departed && !departed.PlayerState.CurrentState.IsDisconnectedOrFinished()
+            && this.IsMatchPlaying && this.PlayerCount < this.MinimumPlayerCount)
+        {
+            this.FinishEvent();
+        }
     }
 
     /// <inheritdoc />

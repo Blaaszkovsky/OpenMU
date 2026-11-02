@@ -4,10 +4,13 @@
 
 namespace MUnique.OpenMU.Persistence.Initialization.VersionSeasonSix.Events;
 
+using System.Text.Json.Nodes;
 using MUnique.OpenMU.DataModel.Configuration;
 using MUnique.OpenMU.DataModel.Configuration.Items;
+using MUnique.OpenMU.GameLogic.PlugIns.PeriodicTasks;
 using MUnique.OpenMU.Interfaces;
 using MUnique.OpenMU.Persistence.Initialization.Properties;
+using MUnique.OpenMU.Persistence.Initialization.Skills;
 using MUnique.OpenMU.Persistence.Initialization.VersionSeasonSix.Maps;
 
 /// <summary>
@@ -50,6 +53,8 @@ internal class IllusionTempleInitializer : InitializerBase
         this.EnsureNpcDefinitions();
         this.EnsureTicket();
         this.EnsureRelic();
+        this.EnsureSpecialSkillEffects();
+        new NpcInitialization(this.Context, this.GameConfiguration).EnsureIllusionSorcererSpirits();
         for (byte level = 1; level <= Brackets.Length; level++)
         {
             var map = this.GameConfiguration.Maps.FirstOrDefault(candidate => candidate.Number == 44 + level && candidate.Discriminator == 0);
@@ -59,10 +64,22 @@ internal class IllusionTempleInitializer : InitializerBase
                 continue;
             }
 
+            if (ReferenceEquals(map.SafezoneMap, map)
+                && this.GameConfiguration.Maps.FirstOrDefault(candidate => candidate.Number == 2 && candidate.Discriminator == 0) is { } safezone)
+            {
+                map.SafezoneMap = safezone;
+            }
+
             this.EnsureNpcSpawns(map);
             if (!this.GameConfiguration.MiniGameDefinitions.Any(definition => definition.Type == MiniGameType.IllusionTemple && definition.GameLevel == level))
             {
                 this.CreateDefinition(level, map);
+            }
+
+            foreach (var definition in this.GameConfiguration.MiniGameDefinitions.Where(definition =>
+                definition.Type == MiniGameType.IllusionTemple && definition.GameLevel == level && definition.MinimumPlayerCount <= 0))
+            {
+                definition.MinimumPlayerCount = this.GetLegacyMinimumPlayerCount();
             }
         }
     }
@@ -193,6 +210,61 @@ internal class IllusionTempleInitializer : InitializerBase
         }
     }
 
+    private int GetLegacyMinimumPlayerCount()
+    {
+        // The new zero-valued column must inherit an existing owner's validated event setting.
+        var configuration = this.GameConfiguration.PlugInConfigurations
+            .FirstOrDefault(plugin => plugin.TypeId == typeof(IllusionTempleStartPlugIn).GUID)?.CustomConfiguration;
+        if (!string.IsNullOrWhiteSpace(configuration)
+            && JsonNode.Parse(configuration)?[nameof(IllusionTempleStartConfiguration.MinimumPlayers)] is JsonValue value
+            && value.TryGetValue<int>(out var minimum) && minimum is >= 2 and <= 10)
+        {
+            return minimum;
+        }
+
+        return IllusionTempleStartConfiguration.Default.MinimumPlayers;
+    }
+
+    private void EnsureSpecialSkillEffects()
+    {
+        if (!this.GameConfiguration.MagicEffects.Any(effect => effect.Number == (short)MagicEffectNumber.IllusionTempleProtection))
+        {
+            var protection = this.Context.CreateNew<MagicEffectDefinition>();
+            this.GameConfiguration.MagicEffects.Add(protection);
+            protection.Number = (short)MagicEffectNumber.IllusionTempleProtection;
+            protection.Name = LocalizedString.FromResource(() => MagicEffectNames.IllusionTempleOrderOfProtection);
+            protection.InformObservers = true;
+            protection.StopByDeath = true;
+            protection.Duration = this.Context.CreateNew<PowerUpDefinitionValue>();
+            protection.Duration.ConstantValue!.Value = 15; // 15 seconds
+
+            var protectionPowerUp = this.Context.CreateNew<PowerUpDefinition>();
+            protection.PowerUpDefinitions.Add(protectionPowerUp);
+            protectionPowerUp.TargetAttribute = Stats.DamageReceiveDecrement.GetPersistent(this.GameConfiguration);
+            protectionPowerUp.Boost = this.Context.CreateNew<PowerUpDefinitionValue>();
+            protectionPowerUp.Boost.ConstantValue.Value = 0.50f; // 50 % damage reduction
+            protectionPowerUp.Boost.ConstantValue.AggregateType = AggregateType.Multiplicate;
+        }
+
+        if (!this.GameConfiguration.MagicEffects.Any(effect => effect.Number == (short)MagicEffectNumber.IllusionTempleRestraint))
+        {
+            var restraint = this.Context.CreateNew<MagicEffectDefinition>();
+            this.GameConfiguration.MagicEffects.Add(restraint);
+            restraint.Number = (short)MagicEffectNumber.IllusionTempleRestraint;
+            restraint.Name = LocalizedString.FromResource(() => MagicEffectNames.IllusionTempleRestraint);
+            restraint.InformObservers = true;
+            restraint.StopByDeath = true;
+            restraint.Duration = this.Context.CreateNew<PowerUpDefinitionValue>();
+            restraint.Duration.ConstantValue!.Value = 15; // 15 seconds
+
+            var restraintPowerUp = this.Context.CreateNew<PowerUpDefinition>();
+            restraint.PowerUpDefinitions.Add(restraintPowerUp);
+            restraintPowerUp.TargetAttribute = Stats.IsFrozen.GetPersistent(this.GameConfiguration);
+            restraintPowerUp.Boost = this.Context.CreateNew<PowerUpDefinitionValue>();
+            restraintPowerUp.Boost.ConstantValue.Value = 1;
+        }
+    }
+
     private void CreateDefinition(byte level, GameMapDefinition map)
     {
         var bracket = Brackets[level - 1];
@@ -210,6 +282,7 @@ internal class IllusionTempleInitializer : InitializerBase
         definition.GameDuration = TimeSpan.FromMinutes(15);
         definition.ExitDuration = TimeSpan.FromMinutes(1);
         definition.MaximumPlayerCount = 10;
+        definition.MinimumPlayerCount = this.GetLegacyMinimumPlayerCount();
         definition.AllowParty = false;
         definition.SaveRankingStatistics = true;
         definition.MapCreationPolicy = MiniGameMapCreationPolicy.Shared;

@@ -855,4 +855,7 @@
   <data name="FereaGeneral" xml:space="preserve"><value>菲利亚将军</value></data>
   <data name="LordOfFerea" xml:space="preserve"><value>菲利亚领主</value></data>
   <data name="FereaCrystalOrb" xml:space="preserve"><value>菲利亚水晶球</value></data>
+  <data name="IllusionSorcererSpirit" xml:space="preserve">
+    <value>幻影术士之灵</value>
+  </data>
 </root>

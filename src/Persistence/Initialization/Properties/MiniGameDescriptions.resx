@@ -116,4 +116,22 @@
   </data>
   <data name="IllusionTempleEvent" xml:space="preserve"><value>A team battle to carry sacred relics to your team's storage.</value></data>
   <data name="IllusionTempleWinningTeamChaosReward" xml:space="preserve"><value>Illusion Temple winning team Jewel of Chaos reward</value></data>
+  <data name="EventDefinitionForIllusionTempleEventLevel1" xml:space="preserve">
+    <value>Event definition for illusion temple, level 1.</value>
+  </data>
+  <data name="EventDefinitionForIllusionTempleEventLevel2" xml:space="preserve">
+    <value>Event definition for illusion temple, level 2.</value>
+  </data>
+  <data name="EventDefinitionForIllusionTempleEventLevel3" xml:space="preserve">
+    <value>Event definition for illusion temple, level 3.</value>
+  </data>
+  <data name="EventDefinitionForIllusionTempleEventLevel4" xml:space="preserve">
+    <value>Event definition for illusion temple, level 4.</value>
+  </data>
+  <data name="EventDefinitionForIllusionTempleEventLevel5" xml:space="preserve">
+    <value>Event definition for illusion temple, level 5.</value>
+  </data>
+  <data name="EventDefinitionForIllusionTempleEventLevel6" xml:space="preserve">
+    <value>Event definition for illusion temple, level 6.</value>
+  </data>
 </root>

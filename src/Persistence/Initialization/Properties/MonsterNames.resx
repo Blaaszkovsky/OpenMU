@@ -855,4 +855,7 @@
   <data name="FereaGeneral" xml:space="preserve"><value>Ferea General</value></data>
   <data name="LordOfFerea" xml:space="preserve"><value>Lord of Ferea</value></data>
   <data name="FereaCrystalOrb" xml:space="preserve"><value>Ferea Crystal Orb</value></data>
+  <data name="IllusionSorcererSpirit" xml:space="preserve">
+    <value>Illusion Sorc. Spirit</value>
+  </data>
 </root>

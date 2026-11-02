@@ -1,10 +1,11 @@
-// <copyright file="IllusionTempleWireGlueTests.cs" company="MUnique">
+﻿// <copyright file="IllusionTempleWireGlueTests.cs" company="MUnique">
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.
 // </copyright>
 
 namespace MUnique.OpenMU.Tests;
 
 using MUnique.OpenMU.GameLogic;
+using MUnique.OpenMU.GameLogic.Attributes;
 using MUnique.OpenMU.GameLogic.MiniGames;
 using MUnique.OpenMU.GameLogic.MiniGames.IllusionTemple;
 using MUnique.OpenMU.GameLogic.Views;
@@ -15,6 +16,9 @@ using MUnique.OpenMU.GameServer.MessageHandler.MiniGames;
 using MUnique.OpenMU.GameServer.RemoteView.MiniGames;
 using MUnique.OpenMU.Network.Packets.ServerToClient;
 using MUnique.OpenMU.Pathfinding;
+using Moq;
+using ClientPackets = MUnique.OpenMU.Network.Packets.ClientToServer;
+using World = MUnique.OpenMU.Tests.MiniGames.IllusionTempleLifecycleTests.TestWorld;
 
 /// <summary>Checks the Illusion Temple glue against the legacy C1/BF wire contracts.</summary>
 [TestFixture]
@@ -34,9 +38,9 @@ public class IllusionTempleWireGlueTests
 
         var data = output.ToArray().AsMemory();
         var offset = 0;
-        var phase = (IllusionTempleSkillEnd)Next(IllusionTempleSkillEnd.Length);
+        var phase = (IllusionTempleEventState)Next(IllusionTempleEventState.Length);
         Assert.That(phase.TempleNumber, Is.EqualTo(3));
-        Assert.That(phase.State, Is.EqualTo(2));
+        Assert.That(phase.State, Is.EqualTo(IllusionTempleEventState.EventState.BattleStarted));
 
         var points = (IllusionTempleSkillPointUpdate)Next(IllusionTempleSkillPointUpdate.Length);
         Assert.That(points.SkillPoints, Is.EqualTo(6));
@@ -71,11 +75,11 @@ public class IllusionTempleWireGlueTests
         var state = (IllusionTempleState)data;
         Assert.That(data.Length, Is.EqualTo(IllusionTempleStateRef.GetRequiredSize(1)));
         Assert.That(state.RemainingSeconds, Is.EqualTo(42));
-        Assert.That(state.PlayerIndex, Is.EqualTo(ViewExtensions.ConstantPlayerId));
+        Assert.That(state.RelicCarrierId, Is.EqualTo(ViewExtensions.ConstantPlayerId));
         Assert.That(state.PositionX, Is.EqualTo(17));
         Assert.That(state.PositionY, Is.EqualTo(29));
-        Assert.That(state.Team1Points, Is.EqualTo(4));
-        Assert.That(state.Team2Points, Is.EqualTo(2));
+        Assert.That(state.AlliedForcesPoints, Is.EqualTo(4));
+        Assert.That(state.IllusionForcesPoints, Is.EqualTo(2));
         Assert.That(state.MyTeam, Is.EqualTo(1));
         Assert.That(state.PartyCount, Is.EqualTo(1));
         Assert.That(state[0].PlayerId, Is.EqualTo(ViewExtensions.ConstantPlayerId));
@@ -86,14 +90,21 @@ public class IllusionTempleWireGlueTests
     public async Task ResultViewSerializesScoresAndRewardRowsAsync()
     {
         var (player, output) = CastleSiegeRemoteViewTestHelper.CreatePlayer();
-        await new IllusionTempleViewPlugIn(player).ShowResultAsync(7, 3, [(player, (byte)1, 123456)]).ConfigureAwait(false);
+        player.Connection.Output.GetSpan(47)[..47].Fill(0xCC);
+        await new IllusionTempleViewPlugIn(player).ShowResultAsync(7, 3,
+            [(player, (byte)1, 123456), (player, (byte)0, 654321)]).ConfigureAwait(false);
 
         var data = output.ToArray().AsMemory();
         var result = (IllusionTempleResult)data;
         Assert.That(data.Length, Is.EqualTo(IllusionTempleResultRef.GetRequiredSize(1)));
         Assert.That(result.Team1Points, Is.EqualTo(7));
         Assert.That(result.Team2Points, Is.EqualTo(3));
-        Assert.That(result.PlayerCount, Is.EqualTo(1));
+        Assert.That(result.PlayerCount, Is.EqualTo(2));
+        Assert.That(data.Length, Is.EqualTo(47));
+        Assert.That(data.Span.Slice(20, 3).ToArray(), Is.EqualTo(new byte[3]));
+        Assert.That(data.Span.Slice(40, 3).ToArray(), Is.EqualTo(new byte[3]));
+        Assert.That(result[1].Team, Is.Zero);
+        Assert.That(result[1].AddedExperience, Is.EqualTo(654321u));
         Assert.That(result[0].Team, Is.EqualTo(1));
         Assert.That(result[0].AddedExperience, Is.EqualTo(123456u));
     }
@@ -128,10 +139,10 @@ public class IllusionTempleWireGlueTests
         await view.UpdateStateAsync(MiniGameType.IllusionTemple, MiniGameState.Ended).ConfigureAwait(false);
 
         var data = output.ToArray();
-        Assert.That(data.Length, Is.EqualTo(4 * IllusionTempleSkillEnd.Length));
+        Assert.That(data.Length, Is.EqualTo(4 * IllusionTempleEventState.Length));
         var phases = Enumerable.Range(0, 4)
-            .Select(index => (IllusionTempleSkillEnd)data.AsMemory(index * IllusionTempleSkillEnd.Length, IllusionTempleSkillEnd.Length))
-            .Select(packet => packet.State)
+            .Select(index => (IllusionTempleEventState)data.AsMemory(index * IllusionTempleEventState.Length, IllusionTempleEventState.Length))
+            .Select(packet => (byte)packet.State)
             .ToArray();
         Assert.That(phases, Is.EqualTo(new byte[] { 0, 1, 2, 3 }));
     }
@@ -162,4 +173,80 @@ public class IllusionTempleWireGlueTests
 
         static byte? GetGroup(object handler) => (Attribute.GetCustomAttribute(handler.GetType(), typeof(BelongsToGroupAttribute)) as BelongsToGroupAttribute)?.GroupKey;
     }
+
+    /// <summary>The Extended handler preserves a live target above the legacy byte range.</summary>
+    [Test]
+    public async Task ExtendedSkillHandlerKeepsFullTargetIdAsync()
+    {
+        await using var world = await World.CreateAsync(4).ConfigureAwait(false);
+        await world.StartAsync().ConfigureAwait(false);
+        var (caster, target) = await EarnPointsAsync(world).ConfigureAwait(false);
+        Assert.That(target.Id, Is.GreaterThan(byte.MaxValue));
+        var bytes = new byte[ClientPackets.IllusionTempleSkillRequestExtended.Length];
+        _ = new ClientPackets.IllusionTempleSkillRequestExtended(bytes)
+        {
+            SkillNumber = 213, TargetObjectIndex = target.Id, Distance = byte.MaxValue,
+        };
+        target.Attributes![Stats.CurrentShield] = 100;
+        await new IllusionTempleSkillRequestHandlerPlugIn().HandlePacketAsync(caster, bytes).ConfigureAwait(false);
+        Assert.That(target.Attributes[Stats.CurrentShield], Is.EqualTo(50));
+    }
+
+    /// <summary>The original eight-byte request still accepts the original self-protection action.</summary>
+    [Test]
+    public async Task LegacySkillHandlerAcceptsOriginalRequestAsync()
+    {
+        await using var world = await World.CreateAsync(4).ConfigureAwait(false);
+        await world.StartAsync().ConfigureAwait(false);
+        var (caster, _) = await EarnPointsAsync(world).ConfigureAwait(false);
+        var bytes = new byte[ClientPackets.IllusionTempleSkillRequest.Length];
+        _ = new ClientPackets.IllusionTempleSkillRequest(bytes) { SkillNumber = 210, TargetObjectIndex = 7, Distance = 0 };
+        await new IllusionTempleSkillRequestHandlerPlugIn().HandlePacketAsync(caster, bytes).ConfigureAwait(false);
+        Assert.That(caster.MagicEffectList.ContainsEffect(202), Is.True);
+    }
+
+    /// <summary>A funded participant cannot make malformed request lengths mutate a target or produce a skill result.</summary>
+    [TestCase(7, 7)]
+    [TestCase(10, 10)]
+    [TestCase(8, 9)]
+    [TestCase(9, 8)]
+    public async Task SkillHandlerRejectsNoncanonicalLengthsAsync(int size, byte declaredSize)
+    {
+        await using var world = await World.CreateAsync(4).ConfigureAwait(false);
+        await world.StartAsync().ConfigureAwait(false);
+        var (caster, target) = await EarnPointsAsync(world).ConfigureAwait(false);
+        var bytes = new byte[size];
+        bytes[0] = 0xC1;
+        bytes[1] = declaredSize;
+        bytes[2] = 0xBF;
+        bytes[3] = 2;
+        bytes[5] = 213;
+        bytes[6] = (byte)target.Id;
+        if (size > 7)
+        {
+            bytes[7] = (byte)(target.Id >> 8);
+        }
+
+        target.Attributes![Stats.CurrentShield] = 100;
+        var views = Mock.Get(caster.ViewPlugIns.GetPlugIn<IIllusionTempleViewPlugIn>()!);
+        views.Invocations.Clear();
+        await new IllusionTempleSkillRequestHandlerPlugIn().HandlePacketAsync(caster, bytes).ConfigureAwait(false);
+        Assert.That(target.Attributes[Stats.CurrentShield], Is.EqualTo(100));
+        views.Verify(view => view.ShowSkillResultAsync(It.IsAny<ushort>(), It.IsAny<Player>(), It.IsAny<Player>(), It.IsAny<bool>()), Times.Never);
+    }
+
+    private static async ValueTask<(Player Caster, Player Target)> EarnPointsAsync(World world)
+    {
+        var caster = world.Players[0];
+        var opponents = world.Players.Where(player => world.Game.GetTeam(player) != world.Game.GetTeam(caster)).ToArray();
+        caster.Position = new Point(100, 100);
+        opponents[0].Position = caster.Position;
+        opponents[0].Attributes![Stats.CurrentShield] = 0;
+        opponents[0].Attributes[Stats.CurrentHealth] = 1;
+        await opponents[0].AttackByAsync(caster, null, false).ConfigureAwait(false);
+        Assert.That(opponents[0].IsAlive, Is.False, "The caster must earn its points through normal opposing-player combat.");
+        opponents[1].Position = new Point(101, 100);
+        return (caster, opponents[1]);
+    }
+
 }

@@ -6341,5 +6341,12 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
                 return ResourceManager.GetString("WizardSRing", resourceCulture);
             }
         }
+
+        /// <summary>Gets CursedCastleWater from the configuration name resources.</summary>
+        public static string CursedCastleWater {
+            get {
+                return ResourceManager.GetString("CursedCastleWater", resourceCulture);
+            }
+        }
     }
 }

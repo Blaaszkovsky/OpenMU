@@ -1,4 +1,4 @@
-// <copyright file="GameContextTestHelper.cs" company="MUnique">
+﻿// <copyright file="GameContextTestHelper.cs" company="MUnique">
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.
 // </copyright>
 
@@ -22,13 +22,15 @@ public static class GameContextTestHelper
     /// <param name="dropGenerator">An optional drop generator to verify reward behavior.</param>
     /// <param name="persistenceContextProvider">An optional persistence provider for failure scenarios.</param>
     /// <param name="loggerFactory">An optional logger factory to observe failures.</param>
+    /// <param name="maximumLevel">The maximum character level for experience reward tests.</param>
     /// <returns>The game context with MuHelperFeaturePlugIn configured.</returns>
     public static IGameContext CreateGameContext(IEnumerable<PlugInConfiguration>? additionalPlugInConfigurations = null, IDropGenerator? dropGenerator = null,
-        IPersistenceContextProvider? persistenceContextProvider = null, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null)
+        IPersistenceContextProvider? persistenceContextProvider = null, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null, short maximumLevel = 0)
     {
         var contextProvider = persistenceContextProvider ?? new InMemoryPersistenceContextProvider();
         var context = contextProvider.CreateNewContext();
         var gameConfig = context.CreateNew<MUnique.OpenMU.Persistence.BasicModel.GameConfiguration>();
+        gameConfig.MaximumLevel = maximumLevel;
         var mapDef = context.CreateNew<MUnique.OpenMU.Persistence.BasicModel.GameMapDefinition>();
         mapDef.Number = 0;
         mapDef.TerrainData = new byte[ushort.MaxValue + 3];

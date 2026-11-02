@@ -19,7 +19,7 @@ namespace MUnique.OpenMU.GameServer.Properties {
     // class via a tool like ResGen or Visual Studio.
     // To add or remove a member, edit your .ResX file then rerun ResGen
     // with the /str option, or rebuild your VS project.
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "18.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "4.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     public class PlugInResources {
@@ -788,7 +788,7 @@ namespace MUnique.OpenMU.GameServer.Properties {
                 return ResourceManager.GetString("CastleSiegeCommandHandlerPlugIn_Description", resourceCulture);
             }
         }
-
+        
         /// <summary>
         ///   Looks up a localized string similar to Castle Siege Guild Command Handler.
         /// </summary>
@@ -797,16 +797,16 @@ namespace MUnique.OpenMU.GameServer.Properties {
                 return ResourceManager.GetString("CastleSiegeCommandHandlerPlugIn_Name", resourceCulture);
             }
         }
-
+        
         /// <summary>
-        ///   Looks up a localized string similar to Forwards an alliance master's directional guild command to same-side players..
+        ///   Looks up a localized string similar to Forwards an alliance master&apos;s directional guild command to same-side players..
         /// </summary>
         public static string CastleSiegeCommandPlugIn_Description {
             get {
                 return ResourceManager.GetString("CastleSiegeCommandPlugIn_Description", resourceCulture);
             }
         }
-
+        
         /// <summary>
         ///   Looks up a localized string similar to Castle Siege Guild Command View.
         /// </summary>
@@ -815,7 +815,7 @@ namespace MUnique.OpenMU.GameServer.Properties {
                 return ResourceManager.GetString("CastleSiegeCommandPlugIn_Name", resourceCulture);
             }
         }
-
+        
         /// <summary>
         ///   Looks up a localized string similar to Sends Castle Siege Crown capture progress to the game client..
         /// </summary>
@@ -1105,6 +1105,24 @@ namespace MUnique.OpenMU.GameServer.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Sends Castle Siege Life Stone creation progress to the game client..
+        /// </summary>
+        public static string CastleSiegeLifeStoneStatePlugIn_Description {
+            get {
+                return ResourceManager.GetString("CastleSiegeLifeStoneStatePlugIn_Description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Castle Siege Life Stone state view.
+        /// </summary>
+        public static string CastleSiegeLifeStoneStatePlugIn_Name {
+            get {
+                return ResourceManager.GetString("CastleSiegeLifeStoneStatePlugIn_Name", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Routes Castle Siege warfare-machine packet subcodes..
         /// </summary>
         public static string CastleSiegeMachineGroupHandlerPlugIn_Description {
@@ -1238,7 +1256,7 @@ namespace MUnique.OpenMU.GameServer.Properties {
                 return ResourceManager.GetString("CastleSiegeMiniMapPlugIn_Description", resourceCulture);
             }
         }
-
+        
         /// <summary>
         ///   Looks up a localized string similar to Castle Siege Mini-Map View.
         /// </summary>
@@ -1247,7 +1265,7 @@ namespace MUnique.OpenMU.GameServer.Properties {
                 return ResourceManager.GetString("CastleSiegeMiniMapPlugIn_Name", resourceCulture);
             }
         }
-
+        
         /// <summary>
         ///   Looks up a localized string similar to Routes Castle Siege NPC-list packet subcodes..
         /// </summary>
@@ -2581,6 +2599,42 @@ namespace MUnique.OpenMU.GameServer.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Handler for the request to enter the doppelganger event through the NPC Lugard..
+        /// </summary>
+        public static string DoppelgangerEnterRequestHandlerPlugIn_Description {
+            get {
+                return ResourceManager.GetString("DoppelgangerEnterRequestHandlerPlugIn_Description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Doppelganger Enter Request Handler.
+        /// </summary>
+        public static string DoppelgangerEnterRequestHandlerPlugIn_Name {
+            get {
+                return ResourceManager.GetString("DoppelgangerEnterRequestHandlerPlugIn_Name", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Sends the doppelganger event packets (0xBF 0x0F - 0x14) to the client..
+        /// </summary>
+        public static string DoppelgangerEventViewPlugIn_Description {
+            get {
+                return ResourceManager.GetString("DoppelgangerEventViewPlugIn_Description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Doppelganger Event View.
+        /// </summary>
+        public static string DoppelgangerEventViewPlugIn_Name {
+            get {
+                return ResourceManager.GetString("DoppelgangerEventViewPlugIn_Name", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Handler for drop item packets..
         /// </summary>
         public static string DropItemHandlerPlugIn_Description {
@@ -2847,6 +2901,24 @@ namespace MUnique.OpenMU.GameServer.Properties {
         public static string DuelStopResponseHandlerPlugIn_Name {
             get {
                 return ResourceManager.GetString("DuelStopResponseHandlerPlugIn_Name", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Handler which warps a player between Lorencia and the Loren Market when using the &apos;Warp&apos; button of Market Union Member Julia..
+        /// </summary>
+        public static string EnterMarketPlace_Description {
+            get {
+                return ResourceManager.GetString("EnterMarketPlace_Description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Enter Market Place Handler.
+        /// </summary>
+        public static string EnterMarketPlace_Name {
+            get {
+                return ResourceManager.GetString("EnterMarketPlace_Name", resourceCulture);
             }
         }
         
@@ -3409,6 +3481,60 @@ namespace MUnique.OpenMU.GameServer.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Handler for illusion temple enter request packets..
+        /// </summary>
+        public static string IllusionTempleEnterHandlerPlugIn_Description {
+            get {
+                return ResourceManager.GetString("IllusionTempleEnterHandlerPlugIn_Description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to IllusionTemple Enter Handler.
+        /// </summary>
+        public static string IllusionTempleEnterHandlerPlugIn_Name {
+            get {
+                return ResourceManager.GetString("IllusionTempleEnterHandlerPlugIn_Name", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Handler for illusion temple reward request packets, sent when the player closes the result dialog..
+        /// </summary>
+        public static string IllusionTempleRewardRequestHandlerPlugIn_Description {
+            get {
+                return ResourceManager.GetString("IllusionTempleRewardRequestHandlerPlugIn_Description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to IllusionTemple Reward Request Handler.
+        /// </summary>
+        public static string IllusionTempleRewardRequestHandlerPlugIn_Name {
+            get {
+                return ResourceManager.GetString("IllusionTempleRewardRequestHandlerPlugIn_Name", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Handler for illusion temple special skill request packets..
+        /// </summary>
+        public static string IllusionTempleSkillRequestHandlerPlugIn_Description {
+            get {
+                return ResourceManager.GetString("IllusionTempleSkillRequestHandlerPlugIn_Description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to IllusionTemple Skill Request Handler.
+        /// </summary>
+        public static string IllusionTempleSkillRequestHandlerPlugIn_Name {
+            get {
+                return ResourceManager.GetString("IllusionTempleSkillRequestHandlerPlugIn_Name", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Handles the request to enter the imperial guardian event, which is sent by the window of Jerint..
         /// </summary>
         public static string ImperialGuardianEnterRequestHandlerPlugIn_Description {
@@ -3859,42 +3985,6 @@ namespace MUnique.OpenMU.GameServer.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Handler for the request to enter the doppelganger event through the NPC Lugard..
-        /// </summary>
-        public static string DoppelgangerEnterRequestHandlerPlugIn_Description {
-            get {
-                return ResourceManager.GetString("DoppelgangerEnterRequestHandlerPlugIn_Description", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Doppelganger Enter Request Handler.
-        /// </summary>
-        public static string DoppelgangerEnterRequestHandlerPlugIn_Name {
-            get {
-                return ResourceManager.GetString("DoppelgangerEnterRequestHandlerPlugIn_Name", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Sends the doppelganger event packets (0xBF 0x0F - 0x14) to the client..
-        /// </summary>
-        public static string DoppelgangerEventViewPlugIn_Description {
-            get {
-                return ResourceManager.GetString("DoppelgangerEventViewPlugIn_Description", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Doppelganger Event View.
-        /// </summary>
-        public static string DoppelgangerEventViewPlugIn_Name {
-            get {
-                return ResourceManager.GetString("DoppelgangerEventViewPlugIn_Name", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to Sends Kanturu event state/result/HUD packets (0xD1 group) to the client..
         /// </summary>
         public static string KanturuEventViewPlugIn_Description {
@@ -4190,7 +4280,7 @@ namespace MUnique.OpenMU.GameServer.Properties {
                 return ResourceManager.GetString("MapChangeExtendedPlugIn_Description", resourceCulture);
             }
         }
-
+        
         /// <summary>
         ///   Looks up a localized string similar to Map Change Extended.
         /// </summary>
@@ -4199,7 +4289,7 @@ namespace MUnique.OpenMU.GameServer.Properties {
                 return ResourceManager.GetString("MapChangeExtendedPlugIn_Name", resourceCulture);
             }
         }
-
+        
         /// <summary>
         ///   Looks up a localized string similar to The default implementation of the IMapChangePlugIn which is forwarding everything to the game client with specific data packets..
         /// </summary>
@@ -4935,6 +5025,24 @@ namespace MUnique.OpenMU.GameServer.Properties {
         public static string PickupItemHandlerPlugIn075_Name {
             get {
                 return ResourceManager.GetString("PickupItemHandlerPlugIn075_Name", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Handles the ping which the client sends periodically, which reports that it&apos;s alive..
+        /// </summary>
+        public static string PingHandlerPlugIn_Description {
+            get {
+                return ResourceManager.GetString("PingHandlerPlugIn_Description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Ping Handler.
+        /// </summary>
+        public static string PingHandlerPlugIn_Name {
+            get {
+                return ResourceManager.GetString("PingHandlerPlugIn_Name", resourceCulture);
             }
         }
         
@@ -6415,6 +6523,24 @@ namespace MUnique.OpenMU.GameServer.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The extended implementation of the IShowItemCraftingPreviewPlugIn which is forwarding everything to the game client with specific data packets..
+        /// </summary>
+        public static string ShowItemCraftingPreviewExtendedPlugIn_Description {
+            get {
+                return ResourceManager.GetString("ShowItemCraftingPreviewExtendedPlugIn_Description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Show Item Crafting Preview Extended.
+        /// </summary>
+        public static string ShowItemCraftingPreviewExtendedPlugIn_Name {
+            get {
+                return ResourceManager.GetString("ShowItemCraftingPreviewExtendedPlugIn_Name", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The default implementation of the IShowItemCraftingResultPlugIn which is forwarding everything to the game client with specific data packets..
         /// </summary>
         public static string ShowItemCraftingResultPlugIn_Description {
@@ -6717,24 +6843,6 @@ namespace MUnique.OpenMU.GameServer.Properties {
         public static string ShowRageAttackRangePlugIn_Name {
             get {
                 return ResourceManager.GetString("ShowRageAttackRangePlugIn_Name", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to The extended implementation of the IShowItemCraftingPreviewPlugIn which is forwarding everything to the game client with specific data packets..
-        /// </summary>
-        public static string ShowItemCraftingPreviewExtendedPlugIn_Description {
-            get {
-                return ResourceManager.GetString("ShowItemCraftingPreviewExtendedPlugIn_Description", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Show Item Crafting Preview Extended.
-        /// </summary>
-        public static string ShowItemCraftingPreviewExtendedPlugIn_Name {
-            get {
-                return ResourceManager.GetString("ShowItemCraftingPreviewExtendedPlugIn_Name", resourceCulture);
             }
         }
         
@@ -7178,7 +7286,7 @@ namespace MUnique.OpenMU.GameServer.Properties {
                 return ResourceManager.GetString("TeleportExtendedPlugIn_Description", resourceCulture);
             }
         }
-
+        
         /// <summary>
         ///   Looks up a localized string similar to Teleport Extended.
         /// </summary>
@@ -7187,7 +7295,7 @@ namespace MUnique.OpenMU.GameServer.Properties {
                 return ResourceManager.GetString("TeleportExtendedPlugIn_Name", resourceCulture);
             }
         }
-
+        
         /// <summary>
         ///   Looks up a localized string similar to The default implementation of the ITeleportPlugIn which is forwarding everything to the game client with specific data packets..
         /// </summary>
@@ -7925,34 +8033,5 @@ namespace MUnique.OpenMU.GameServer.Properties {
                 return ResourceManager.GetString("WhisperedChatMessageHandlerPlugIn_Name", resourceCulture);
             }
         }
-
-        /// <summary>
-        ///   Looks up a localized string similar to Sends Castle Siege Life Stone creation progress to the game client.
-        /// </summary>
-        public static string CastleSiegeLifeStoneStatePlugIn_Description {
-            get {
-                return ResourceManager.GetString("CastleSiegeLifeStoneStatePlugIn_Description", resourceCulture);
-            }
-        }
-
-        /// <summary>
-        ///   Looks up a localized string similar to Castle Siege Life Stone state view.
-        /// </summary>
-        public static string CastleSiegeLifeStoneStatePlugIn_Name {
-            get {
-                return ResourceManager.GetString("CastleSiegeLifeStoneStatePlugIn_Name", resourceCulture);
-            }
-        }
-        /// <summary>Gets the localized EnterMarketPlace_Name text.</summary>
-        public static string EnterMarketPlace_Name => ResourceManager.GetString("EnterMarketPlace_Name", resourceCulture)!;
-
-        /// <summary>Gets the localized EnterMarketPlace_Description text.</summary>
-        public static string EnterMarketPlace_Description => ResourceManager.GetString("EnterMarketPlace_Description", resourceCulture)!;
-
-        /// <summary>Gets the localized PingHandlerPlugIn_Name text.</summary>
-        public static string PingHandlerPlugIn_Name => ResourceManager.GetString("PingHandlerPlugIn_Name", resourceCulture)!;
-
-        /// <summary>Gets the localized PingHandlerPlugIn_Description text.</summary>
-        public static string PingHandlerPlugIn_Description => ResourceManager.GetString("PingHandlerPlugIn_Description", resourceCulture)!;
     }
 }

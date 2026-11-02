@@ -1,4 +1,4 @@
-// <copyright file="IllusionTemplePacketContractTests.cs" company="MUnique">
+﻿// <copyright file="IllusionTemplePacketContractTests.cs" company="MUnique">
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.
 // </copyright>
 
@@ -9,7 +9,7 @@ using MUnique.OpenMU.Network.Packets.ServerToClient;
 using ClientPackets = MUnique.OpenMU.Network.Packets.ClientToServer;
 
 /// <summary>
-/// Verifies the packed Season Six Illusion Temple wire contract without native structure padding.
+/// Verifies the packed Season Six Illusion Temple wire contract including the original result alignment padding.
 /// </summary>
 [TestFixture]
 public class IllusionTemplePacketContractTests
@@ -24,11 +24,11 @@ public class IllusionTemplePacketContractTests
         var packet = new IllusionTempleState(data)
         {
             RemainingSeconds = 513,
-            PlayerIndex = 0x1234,
+            RelicCarrierId = 0x1234,
             PositionX = 80,
             PositionY = 90,
-            Team1Points = 2,
-            Team2Points = 3,
+            AlliedForcesPoints = 2,
+            IllusionForcesPoints = 3,
             MyTeam = 1,
             PartyCount = 1,
         };
@@ -63,10 +63,10 @@ public class IllusionTemplePacketContractTests
     }
 
     /// <summary>
-    /// Results have a seven-byte prefix and seventeen-byte player entries with unaligned signed experience.
+    /// Results have a seven-byte prefix and twenty-byte player entries with three reserved alignment bytes.
     /// </summary>
     [Test]
-    public void ResultUsesPackedPlayerRows()
+    public void ResultUsesAlignedPlayerRows()
     {
         var data = new byte[27];
         var packet = new IllusionTempleResult(data) { Team1Points = 7, Team2Points = 2, PlayerCount = 1 };
@@ -79,10 +79,10 @@ public class IllusionTemplePacketContractTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(IllusionTempleResultRef.GetRequiredSize(1), Is.EqualTo(24));
+            Assert.That(IllusionTempleResultRef.GetRequiredSize(1), Is.EqualTo(27));
             Assert.That(data[7..17], Is.EqualTo("TestPlayer"u8.ToArray()));
             Assert.That(data[17..20], Is.EqualTo(new byte[] { 45, 1, 2 }));
-            Assert.That(BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(20)), Is.EqualTo(-1234));
+            Assert.That(BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(23)), Is.EqualTo(-1234));
         });
     }
 
@@ -93,11 +93,11 @@ public class IllusionTemplePacketContractTests
     public void SkillRequestPreservesFullTargetIndex()
     {
         var data = new byte[] { 0xC1, 9, 0xBF, 2, 0, 210, 0x34, 0x12, 5 };
-        var packet = new ClientPackets.IllusionTempleSkillRequest(data);
+        var packet = new ClientPackets.IllusionTempleSkillRequestExtended(data);
 
         Assert.Multiple(() =>
         {
-            Assert.That(ClientPackets.IllusionTempleSkillRequest.Length, Is.EqualTo(9));
+            Assert.That(ClientPackets.IllusionTempleSkillRequestExtended.Length, Is.EqualTo(9));
             Assert.That(packet.TargetObjectIndex, Is.EqualTo(0x1234));
             Assert.That(packet.Distance, Is.EqualTo(5));
         });
@@ -110,8 +110,24 @@ public class IllusionTemplePacketContractTests
     public void PhaseUpdateDoesNotCollideWithSkillEnded()
     {
         var data = new byte[6];
-        _ = new IllusionTempleSkillEnd(data) { TempleNumber = 1, State = 2 };
+        _ = new IllusionTempleEventState(data) { TempleNumber = 1, State = IllusionTempleEventState.EventState.BattleStarted };
 
         Assert.That(data[..4], Is.EqualTo(new byte[] { 0xC1, 6, 0xBF, 9 }));
     }
+
+    /// <summary>The original request keeps its byte target and eighth-byte distance.</summary>
+    [Test]
+    public void LegacySkillRequestRetainsOriginalByteTarget()
+    {
+        var data = new byte[] { 0xC1, 8, 0xBF, 2, 0, 213, 0xFE, 5 };
+        var packet = new ClientPackets.IllusionTempleSkillRequest(data);
+        Assert.Multiple(() =>
+        {
+            Assert.That(ClientPackets.IllusionTempleSkillRequest.Length, Is.EqualTo(8));
+            Assert.That(packet.SkillNumber, Is.EqualTo(213));
+            Assert.That(packet.TargetObjectIndex, Is.EqualTo(0xFE));
+            Assert.That(packet.Distance, Is.EqualTo(5));
+        });
+    }
+
 }

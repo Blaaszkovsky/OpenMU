@@ -4446,7 +4446,7 @@ public static class ConnectionExtensions
     /// Is sent by the client when: The player is in the illusion temple event and wants to perform a special skill (210 - 213), Order of Protection, Restraint, Tracking or Weaken.
     /// Causes reaction on server side: The server checks if the player is inside the event etc. and performs the skills accordingly.
     /// </remarks>
-    public static async ValueTask SendIllusionTempleSkillRequestAsync(this IConnection? connection, ushort @skillNumber, ushort @targetObjectIndex, byte @distance)
+    public static async ValueTask SendIllusionTempleSkillRequestAsync(this IConnection? connection, ushort @skillNumber, byte @targetObjectIndex, byte @distance)
     {
         if (connection is null)
         {
@@ -4457,6 +4457,38 @@ public static class ConnectionExtensions
         {
             var length = IllusionTempleSkillRequestRef.Length;
             var packet = new IllusionTempleSkillRequestRef(connection.Output.GetSpan(length)[..length]);
+            packet.SkillNumber = @skillNumber;
+            packet.TargetObjectIndex = @targetObjectIndex;
+            packet.Distance = @distance;
+
+            return packet.Header.Length;
+        }
+
+        await connection.SendAsync(WritePacket).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Sends a <see cref="IllusionTempleSkillRequestExtended" /> to this connection.
+    /// </summary>
+    /// <param name="connection">The connection.</param>
+    /// <param name="skillNumber">The skill number.</param>
+    /// <param name="targetObjectIndex">The target object index.</param>
+    /// <param name="distance">The distance.</param>
+    /// <remarks>
+    /// Is sent by the client when: The open source client requests an illusion temple special skill with a full sixteen-bit target object index.
+    /// Causes reaction on server side: The server checks if the player is inside the event etc. and performs the skills accordingly.
+    /// </remarks>
+    public static async ValueTask SendIllusionTempleSkillRequestExtendedAsync(this IConnection? connection, ushort @skillNumber, ushort @targetObjectIndex, byte @distance)
+    {
+        if (connection is null)
+        {
+            return;
+        }
+
+        int WritePacket()
+        {
+            var length = IllusionTempleSkillRequestExtendedRef.Length;
+            var packet = new IllusionTempleSkillRequestExtendedRef(connection.Output.GetSpan(length)[..length]);
             packet.SkillNumber = @skillNumber;
             packet.TargetObjectIndex = @targetObjectIndex;
             packet.Distance = @distance;

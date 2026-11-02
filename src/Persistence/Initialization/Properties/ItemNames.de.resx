@@ -2059,4 +2059,7 @@
     <value>Arkane Flügel (Magier)</value>
   </data>
   <data name="IllusionTempleRelic" xml:space="preserve"><value>Relikt des Illusionstempels</value></data>
+  <data name="CursedCastleWater" xml:space="preserve">
+    <value>Verfluchtes Burgwasser</value>
+  </data>
 </root>

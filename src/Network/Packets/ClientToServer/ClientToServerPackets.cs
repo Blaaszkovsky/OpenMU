@@ -14142,6 +14142,110 @@ public readonly struct IllusionTempleSkillRequest
     /// <summary>
     /// Gets the initial length of this data packet. When the size is dynamic, this value may be bigger than actually needed.
     /// </summary>
+    public static int Length => 8;
+
+    /// <summary>
+    /// Gets the header of this packet.
+    /// </summary>
+    public C1HeaderWithSubCode Header => new (this._data);
+
+    /// <summary>
+    /// Gets or sets the skill number.
+    /// </summary>
+    public ushort SkillNumber
+    {
+        get => ReadUInt16BigEndian(this._data.Span[4..]);
+        set => WriteUInt16BigEndian(this._data.Span[4..], value);
+    }
+
+    /// <summary>
+    /// Gets or sets the target object index.
+    /// </summary>
+    public byte TargetObjectIndex
+    {
+        get => this._data.Span[6];
+        set => this._data.Span[6] = value;
+    }
+
+    /// <summary>
+    /// Gets or sets the distance.
+    /// </summary>
+    public byte Distance
+    {
+        get => this._data.Span[7];
+        set => this._data.Span[7] = value;
+    }
+
+    /// <summary>
+    /// Performs an implicit conversion from a Memory of bytes to a <see cref="IllusionTempleSkillRequest"/>.
+    /// </summary>
+    /// <param name="packet">The packet as span.</param>
+    /// <returns>The packet as struct.</returns>
+    public static implicit operator IllusionTempleSkillRequest(Memory<byte> packet) => new (packet, false);
+
+    /// <summary>
+    /// Performs an implicit conversion from <see cref="IllusionTempleSkillRequest"/> to a Memory of bytes.
+    /// </summary>
+    /// <param name="packet">The packet as struct.</param>
+    /// <returns>The packet as byte span.</returns>
+    public static implicit operator Memory<byte>(IllusionTempleSkillRequest packet) => packet._data; 
+}
+
+
+/// <summary>
+/// Is sent by the client when: The open source client requests an illusion temple special skill with a full sixteen-bit target object index.
+/// Causes reaction on server side: The server checks if the player is inside the event etc. and performs the skills accordingly.
+/// </summary>
+public readonly struct IllusionTempleSkillRequestExtended
+{
+    private readonly Memory<byte> _data;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="IllusionTempleSkillRequestExtended"/> struct.
+    /// </summary>
+    /// <param name="data">The underlying data.</param>
+    public IllusionTempleSkillRequestExtended(Memory<byte> data)
+        : this(data, true)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="IllusionTempleSkillRequestExtended"/> struct.
+    /// </summary>
+    /// <param name="data">The underlying data.</param>
+    /// <param name="initialize">If set to <c>true</c>, the header data is automatically initialized and written to the underlying span.</param>
+    private IllusionTempleSkillRequestExtended(Memory<byte> data, bool initialize)
+    {
+        this._data = data;
+        if (initialize)
+        {
+            var header = this.Header;
+            header.Type = HeaderType;
+            header.Code = Code;
+            header.Length = (byte)Math.Min(data.Length, Length);
+            header.SubCode = SubCode;
+        }
+    }
+
+    /// <summary>
+    /// Gets the header type of this data packet.
+    /// </summary>
+    public static byte HeaderType => 0xC1;
+
+    /// <summary>
+    /// Gets the operation code of this data packet.
+    /// </summary>
+    public static byte Code => 0xBF;
+
+    /// <summary>
+    /// Gets the operation sub-code of this data packet.
+    /// The <see cref="Code" /> is used as a grouping key.
+    /// </summary>
+    public static byte SubCode => 0x02;
+
+    /// <summary>
+    /// Gets the initial length of this data packet. When the size is dynamic, this value may be bigger than actually needed.
+    /// </summary>
     public static int Length => 9;
 
     /// <summary>
@@ -14177,18 +14281,18 @@ public readonly struct IllusionTempleSkillRequest
     }
 
     /// <summary>
-    /// Performs an implicit conversion from a Memory of bytes to a <see cref="IllusionTempleSkillRequest"/>.
+    /// Performs an implicit conversion from a Memory of bytes to a <see cref="IllusionTempleSkillRequestExtended"/>.
     /// </summary>
     /// <param name="packet">The packet as span.</param>
     /// <returns>The packet as struct.</returns>
-    public static implicit operator IllusionTempleSkillRequest(Memory<byte> packet) => new (packet, false);
+    public static implicit operator IllusionTempleSkillRequestExtended(Memory<byte> packet) => new (packet, false);
 
     /// <summary>
-    /// Performs an implicit conversion from <see cref="IllusionTempleSkillRequest"/> to a Memory of bytes.
+    /// Performs an implicit conversion from <see cref="IllusionTempleSkillRequestExtended"/> to a Memory of bytes.
     /// </summary>
     /// <param name="packet">The packet as struct.</param>
     /// <returns>The packet as byte span.</returns>
-    public static implicit operator Memory<byte>(IllusionTempleSkillRequest packet) => packet._data; 
+    public static implicit operator Memory<byte>(IllusionTempleSkillRequestExtended packet) => packet._data; 
 }
 
 

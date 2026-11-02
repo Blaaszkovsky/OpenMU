@@ -5723,9 +5723,9 @@ public class PacketStructureTests
         Assert.That(4, Is.GreaterThanOrEqualTo(0), 
             "Field 'RemainingSeconds' has invalid negative index");
         
-        // Field 'PlayerIndex' starts at index 6 with size 2
+        // Field 'RelicCarrierId' starts at index 6 with size 2
         Assert.That(6, Is.GreaterThanOrEqualTo(0), 
-            "Field 'PlayerIndex' has invalid negative index");
+            "Field 'RelicCarrierId' has invalid negative index");
         
         // Field 'PositionX' starts at index 8 with size 1
         Assert.That(8, Is.GreaterThanOrEqualTo(0), 
@@ -5735,13 +5735,13 @@ public class PacketStructureTests
         Assert.That(9, Is.GreaterThanOrEqualTo(0), 
             "Field 'PositionY' has invalid negative index");
         
-        // Field 'Team1Points' starts at index 10 with size 1
+        // Field 'AlliedForcesPoints' starts at index 10 with size 1
         Assert.That(10, Is.GreaterThanOrEqualTo(0), 
-            "Field 'Team1Points' has invalid negative index");
+            "Field 'AlliedForcesPoints' has invalid negative index");
         
-        // Field 'Team2Points' starts at index 11 with size 1
+        // Field 'IllusionForcesPoints' starts at index 11 with size 1
         Assert.That(11, Is.GreaterThanOrEqualTo(0), 
-            "Field 'Team2Points' has invalid negative index");
+            "Field 'IllusionForcesPoints' has invalid negative index");
         
         // Field 'MyTeam' starts at index 12 with size 1
         Assert.That(12, Is.GreaterThanOrEqualTo(0), 
@@ -5888,25 +5888,31 @@ public class PacketStructureTests
     [Test]
     public void IllusionTempleHolyItemRelics_PacketSizeValidation()
     {
-        // Variable-length packet validation
-        // Test GetRequiredSize method with sample data
-        const string testString = "TestData";
-        var calculatedSize = IllusionTempleHolyItemRelicsRef.GetRequiredSize(testString);
-        var expectedMinSize = Encoding.UTF8.GetByteCount(testString) + 1 + 6;
+        // Fixed-length packet validation
+        const int expectedLength = 16;
+        var actualLength = IllusionTempleHolyItemRelicsRef.Length;
         
-        Assert.That(calculatedSize, Is.GreaterThanOrEqualTo(expectedMinSize), 
-            "GetRequiredSize calculation incorrect for string field");
+        Assert.That(actualLength, Is.EqualTo(expectedLength), 
+            "Packet length mismatch: declared length does not match calculated size");
+        
+        // Validate field 'UserIndex' boundary
+        Assert.That(4 + 2, Is.LessThanOrEqualTo(expectedLength), 
+            "Field 'UserIndex' exceeds packet boundary");
+        
+        // Validate field 'Name' boundary
+        Assert.That(6 + 10, Is.LessThanOrEqualTo(expectedLength), 
+            "Field 'Name' exceeds packet boundary");
     }
 
     /// <summary>
-    /// Tests the packet size calculation for IllusionTempleSkillEnd.
+    /// Tests the packet size calculation for IllusionTempleEventState.
     /// </summary>
     [Test]
-    public void IllusionTempleSkillEnd_PacketSizeValidation()
+    public void IllusionTempleEventState_PacketSizeValidation()
     {
         // Fixed-length packet validation
         const int expectedLength = 6;
-        var actualLength = IllusionTempleSkillEndRef.Length;
+        var actualLength = IllusionTempleEventStateRef.Length;
         
         Assert.That(actualLength, Is.EqualTo(expectedLength), 
             "Packet length mismatch: declared length does not match calculated size");

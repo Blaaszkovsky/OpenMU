@@ -2104,4 +2104,7 @@
     <value>Arcane Wings (Wizard)</value>
   </data>
   <data name="IllusionTempleRelic" xml:space="preserve"><value>Illusion Temple relic</value></data>
+  <data name="CursedCastleWater" xml:space="preserve">
+    <value>Cursed Castle Water</value>
+  </data>
 </root>

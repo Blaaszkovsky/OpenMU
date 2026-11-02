@@ -25939,7 +25939,7 @@ public readonly ref struct IllusionTempleEnterResultRef
 
 /// <summary>
 /// Is sent by the server when: The player is in the illusion temple event and the server sends a cyclic update.
-/// Causes reaction on client side: The client shows the state in the user interface.
+/// Causes reaction on client side: The client shows the score board, the remaining time, and the carrier of the holy relic and the own team mates on its mini map.
 /// </summary>
 public readonly ref struct IllusionTempleStateRef
 {
@@ -26003,9 +26003,9 @@ public readonly ref struct IllusionTempleStateRef
     }
 
     /// <summary>
-    /// Gets or sets the player index.
+    /// Gets or sets the relic carrier id.
     /// </summary>
-    public ushort PlayerIndex
+    public ushort RelicCarrierId
     {
         get => ReadUInt16LittleEndian(this._data[6..]);
         set => WriteUInt16LittleEndian(this._data[6..], value);
@@ -26030,18 +26030,18 @@ public readonly ref struct IllusionTempleStateRef
     }
 
     /// <summary>
-    /// Gets or sets the team 1 points.
+    /// Gets or sets the allied forces points.
     /// </summary>
-    public byte Team1Points
+    public byte AlliedForcesPoints
     {
         get => this._data[10];
         set => this._data[10] = value;
     }
 
     /// <summary>
-    /// Gets or sets the team 2 points.
+    /// Gets or sets the illusion forces points.
     /// </summary>
-    public byte Team2Points
+    public byte IllusionForcesPoints
     {
         get => this._data[11];
         set => this._data[11] = value;
@@ -26066,9 +26066,9 @@ public readonly ref struct IllusionTempleStateRef
     }
 
     /// <summary>
-    /// Gets the <see cref="IllusionTemplePartyEntryRef"/> of the specified index.
+    /// Gets the <see cref="IllusionTempleTeamMateRef"/> of the specified index.
     /// </summary>
-        public IllusionTemplePartyEntryRef this[int index] => new (this._data[(14 + index * IllusionTemplePartyEntryRef.Length)..]);
+        public IllusionTempleTeamMateRef this[int index] => new (this._data[(14 + index * IllusionTempleTeamMateRef.Length)..]);
 
     /// <summary>
     /// Performs an implicit conversion from a Span of bytes to a <see cref="IllusionTempleState"/>.
@@ -26085,25 +26085,25 @@ public readonly ref struct IllusionTempleStateRef
     public static implicit operator Span<byte>(IllusionTempleStateRef packet) => packet._data; 
 
     /// <summary>
-    /// Calculates the size of the packet for the specified count of <see cref="IllusionTemplePartyEntryRef"/>.
+    /// Calculates the size of the packet for the specified count of <see cref="IllusionTempleTeamMateRef"/>.
     /// </summary>
-    /// <param name="partyMembersCount">The count of <see cref="IllusionTemplePartyEntryRef"/> from which the size will be calculated.</param>
+    /// <param name="teamMatesCount">The count of <see cref="IllusionTempleTeamMateRef"/> from which the size will be calculated.</param>
         
-    public static int GetRequiredSize(int partyMembersCount) => partyMembersCount * IllusionTemplePartyEntryRef.Length + 14;
+    public static int GetRequiredSize(int teamMatesCount) => teamMatesCount * IllusionTempleTeamMateRef.Length + 14;
 
 
 /// <summary>
-/// Contains the info about a party member in illusion temple..
+/// Contains the info about a team mate in the illusion temple, so that the client can show him on its mini map. Only PartyCount entries are sent - there are no unused/zeroed slots..
 /// </summary>
-public readonly ref struct IllusionTemplePartyEntryRef
+public readonly ref struct IllusionTempleTeamMateRef
 {
     private readonly Span<byte> _data;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="IllusionTemplePartyEntryRef"/> struct.
+    /// Initializes a new instance of the <see cref="IllusionTempleTeamMateRef"/> struct.
     /// </summary>
     /// <param name="data">The underlying data.</param>
-    public IllusionTemplePartyEntryRef(Span<byte> data)
+    public IllusionTempleTeamMateRef(Span<byte> data)
     {
         this._data = data;
     }
@@ -26525,15 +26525,15 @@ public readonly ref struct PlayerResultRef
     /// <summary>
     /// Gets the initial length of this data packet. When the size is dynamic, this value may be bigger than actually needed.
     /// </summary>
-    public static int Length => 17;
+    public static int Length => 20;
 
     /// <summary>
     /// Gets or sets the name.
     /// </summary>
     public string Name
     {
-        get => this._data.ExtractString(0, this._data.Length - 0, System.Text.Encoding.UTF8);
-        set => this._data.Slice(0).WriteString(value, System.Text.Encoding.UTF8);
+        get => this._data.ExtractString(0, 10, System.Text.Encoding.UTF8);
+        set => this._data.Slice(0, 10).WriteString(value, System.Text.Encoding.UTF8);
     }
 
     /// <summary>
@@ -26568,21 +26568,9 @@ public readonly ref struct PlayerResultRef
     /// </summary>
     public uint AddedExperience
     {
-        get => ReadUInt32LittleEndian(this._data[13..]);
-        set => WriteUInt32LittleEndian(this._data[13..], value);
+        get => ReadUInt32LittleEndian(this._data[16..]);
+        set => WriteUInt32LittleEndian(this._data[16..], value);
     }
-
-    /// <summary>
-    /// Calculates the size of the packet for the specified field content.
-    /// </summary>
-    /// <param name="content">The content of the variable 'Name' field from which the size will be calculated.</param>
-    public static int GetRequiredSize(string content) => System.Text.Encoding.UTF8.GetByteCount(content) + 1 + 0;
-
-    /// <summary>
-    /// Calculates the size of the packet for the specified field content.
-    /// </summary>
-    /// <param name="contentLength">The content length in bytes of the variable 'Name' field from which the size will be calculated.</param>
-    public static int GetRequiredSize(int contentLength) => contentLength + 1 + 0;
 }
 }
 
@@ -26843,8 +26831,8 @@ public readonly ref struct IllusionTempleHolyItemRelicsRef
     /// </summary>
     public string Name
     {
-        get => this._data.ExtractString(6, this._data.Length - 6, System.Text.Encoding.UTF8);
-        set => this._data.Slice(6).WriteString(value, System.Text.Encoding.UTF8);
+        get => this._data.ExtractString(6, 10, System.Text.Encoding.UTF8);
+        set => this._data.Slice(6, 10).WriteString(value, System.Text.Encoding.UTF8);
     }
 
     /// <summary>
@@ -26860,44 +26848,32 @@ public readonly ref struct IllusionTempleHolyItemRelicsRef
     /// <param name="packet">The packet as struct.</param>
     /// <returns>The packet as byte span.</returns>
     public static implicit operator Span<byte>(IllusionTempleHolyItemRelicsRef packet) => packet._data; 
-
-    /// <summary>
-    /// Calculates the size of the packet for the specified field content.
-    /// </summary>
-    /// <param name="content">The content of the variable 'Name' field from which the size will be calculated.</param>
-    public static int GetRequiredSize(string content) => System.Text.Encoding.UTF8.GetByteCount(content) + 1 + 6;
-
-    /// <summary>
-    /// Calculates the size of the packet for the specified field content.
-    /// </summary>
-    /// <param name="contentLength">The content length in bytes of the variable 'Name' field from which the size will be calculated.</param>
-    public static int GetRequiredSize(int contentLength) => contentLength + 1 + 6;
 }
 
 
 /// <summary>
-/// Is sent by the server when: ?
-/// Causes reaction on client side: The client shows the skill points.
+/// Is sent by the server when: The state of an illusion temple event changed, e.g. when the battle starts.
+/// Causes reaction on client side: The client shows or hides the user interface of the event - the score board, the timer and the mini map - and applies the barriers of the arena, which are hardcoded at client side.
 /// </summary>
-public readonly ref struct IllusionTempleSkillEndRef
+public readonly ref struct IllusionTempleEventStateRef
 {
     private readonly Span<byte> _data;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="IllusionTempleSkillEndRef"/> struct.
+    /// Initializes a new instance of the <see cref="IllusionTempleEventStateRef"/> struct.
     /// </summary>
     /// <param name="data">The underlying data.</param>
-    public IllusionTempleSkillEndRef(Span<byte> data)
+    public IllusionTempleEventStateRef(Span<byte> data)
         : this(data, true)
     {
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="IllusionTempleSkillEndRef"/> struct.
+    /// Initializes a new instance of the <see cref="IllusionTempleEventStateRef"/> struct.
     /// </summary>
     /// <param name="data">The underlying data.</param>
     /// <param name="initialize">If set to <c>true</c>, the header data is automatically initialized and written to the underlying span.</param>
-    private IllusionTempleSkillEndRef(Span<byte> data, bool initialize)
+    private IllusionTempleEventStateRef(Span<byte> data, bool initialize)
     {
         this._data = data;
         if (initialize)
@@ -26948,25 +26924,25 @@ public readonly ref struct IllusionTempleSkillEndRef
     /// <summary>
     /// Gets or sets the state.
     /// </summary>
-    public byte State
+    public IllusionTempleEventState.EventState State
     {
-        get => this._data[5];
-        set => this._data[5] = value;
+        get => (IllusionTempleEventState.EventState)this._data[5];
+        set => this._data[5] = (byte)value;
     }
 
     /// <summary>
-    /// Performs an implicit conversion from a Span of bytes to a <see cref="IllusionTempleSkillEnd"/>.
+    /// Performs an implicit conversion from a Span of bytes to a <see cref="IllusionTempleEventState"/>.
     /// </summary>
     /// <param name="packet">The packet as span.</param>
     /// <returns>The packet as struct.</returns>
-    public static implicit operator IllusionTempleSkillEndRef(Span<byte> packet) => new (packet, false);
+    public static implicit operator IllusionTempleEventStateRef(Span<byte> packet) => new (packet, false);
 
     /// <summary>
-    /// Performs an implicit conversion from <see cref="IllusionTempleSkillEnd"/> to a Span of bytes.
+    /// Performs an implicit conversion from <see cref="IllusionTempleEventState"/> to a Span of bytes.
     /// </summary>
     /// <param name="packet">The packet as struct.</param>
     /// <returns>The packet as byte span.</returns>
-    public static implicit operator Span<byte>(IllusionTempleSkillEndRef packet) => packet._data; 
+    public static implicit operator Span<byte>(IllusionTempleEventStateRef packet) => packet._data; 
 }
 
 

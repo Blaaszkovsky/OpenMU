@@ -121,6 +121,7 @@
   * [C1 BD 09 - CrywolfChaosRateBenefitRequest (by client)](C1-BD-09-CrywolfChaosRateBenefitRequest_by-client.md)
   * [C1 BF 00 - IllusionTempleEnterRequest (by client)](C1-BF-00-IllusionTempleEnterRequest_by-client.md)
   * [C1 BF 02 - IllusionTempleSkillRequest (by client)](C1-BF-02-IllusionTempleSkillRequest_by-client.md)
+  * [C1 BF 02 - IllusionTempleSkillRequestExtended (by client)](C1-BF-02-IllusionTempleSkillRequestExtended_by-client.md)
   * [C1 BF 05 - IllusionTempleRewardRequest (by client)](C1-BF-05-IllusionTempleRewardRequest_by-client.md)
   * [C1 BF 0B - LuckyCoinCountRequest (by client)](C1-BF-0B-LuckyCoinCountRequest_by-client.md)
   * [C1 BF 0C - LuckyCoinRegistrationRequest (by client)](C1-BF-0C-LuckyCoinRegistrationRequest_by-client.md)

@@ -1,4 +1,4 @@
-// <copyright file="IllusionTempleViewPlugIn.cs" company="MUnique">
+﻿// <copyright file="IllusionTempleViewPlugIn.cs" company="MUnique">
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.
 // </copyright>
 
@@ -30,7 +30,7 @@ public sealed class IllusionTempleViewPlugIn : IIllusionTempleViewPlugIn
     /// <inheritdoc />
     public async ValueTask ShowPhaseAsync(byte level, byte phase)
     {
-        await this._player.Connection.SendIllusionTempleSkillEndAsync(level, phase).ConfigureAwait(false);
+        await this._player.Connection.SendIllusionTempleEventStateAsync(level, (IllusionTempleEventState.EventState)phase).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -41,18 +41,18 @@ public sealed class IllusionTempleViewPlugIn : IIllusionTempleViewPlugIn
             return;
         }
 
-        var maximumPartyMembers = (byte.MaxValue - 14) / IllusionTempleStateRef.IllusionTemplePartyEntryRef.Length;
+        var maximumPartyMembers = (byte.MaxValue - 14) / IllusionTempleStateRef.IllusionTempleTeamMateRef.Length;
         var party = members.Take(maximumPartyMembers).ToArray();
         int WritePacket()
         {
             var length = IllusionTempleStateRef.GetRequiredSize(party.Length);
             var packet = new IllusionTempleStateRef(connection.Output.GetSpan(length)[..length]);
             packet.RemainingSeconds = (ushort)Math.Clamp(remaining.TotalSeconds, 0, ushort.MaxValue);
-            packet.PlayerIndex = holder?.GetId(this._player) ?? ushort.MaxValue;
+            packet.RelicCarrierId = holder?.GetId(this._player) ?? ushort.MaxValue;
             packet.PositionX = relicPosition is { } position ? ToByte(position.X) : (byte)0;
             packet.PositionY = relicPosition is { } positionY ? ToByte(positionY.Y) : (byte)0;
-            packet.Team1Points = alliedScore;
-            packet.Team2Points = illusionScore;
+            packet.AlliedForcesPoints = alliedScore;
+            packet.IllusionForcesPoints = illusionScore;
             packet.MyTeam = team;
             packet.PartyCount = (byte)party.Length;
 
@@ -107,7 +107,9 @@ public sealed class IllusionTempleViewPlugIn : IIllusionTempleViewPlugIn
         int WritePacket()
         {
             var length = IllusionTempleResultRef.GetRequiredSize(players.Length);
-            var packet = new IllusionTempleResultRef(connection.Output.GetSpan(length)[..length]);
+            var span = connection.Output.GetSpan(length)[..length];
+            span.Clear(); // The original result layout includes three reserved alignment bytes per player.
+            var packet = new IllusionTempleResultRef(span);
             packet.Team1Points = alliedScore;
             packet.Team2Points = illusionScore;
             packet.PlayerCount = (byte)players.Length;
@@ -119,7 +121,7 @@ public sealed class IllusionTempleViewPlugIn : IIllusionTempleViewPlugIn
                 result.Name = TruncateName(player.Name);
                 result.MapNumber = (byte)Math.Clamp(player.CurrentMap?.MapId ?? 0, byte.MinValue, byte.MaxValue);
                 result.Team = team;
-                result.Class = (byte)Math.Clamp(player.SelectedCharacter?.CharacterClass?.Number ?? 0, byte.MinValue, byte.MaxValue);
+                result.Class = ((byte)Math.Clamp(player.SelectedCharacter?.CharacterClass?.Number ?? 0, byte.MinValue, byte.MaxValue)).ToIllusionTempleCharacterClass();
                 result.AddedExperience = unchecked((uint)experience);
             }
 

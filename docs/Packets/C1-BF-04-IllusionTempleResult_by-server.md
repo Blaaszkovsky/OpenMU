@@ -25,12 +25,12 @@ The client shows the results.
 
 Contains the result of a player in the event.
 
-Length: 17 Bytes
+Length: 20 Bytes
 
 | Index | Length | Data Type | Value | Description |
 |-------|--------|-----------|-------|-------------|
-| 0 |  | String |  | Name |
+| 0 | 10 | String |  | Name |
 | 10 | 1 | Byte |  | MapNumber |
 | 11 | 1 | Byte |  | Team |
 | 12 | 1 | Byte |  | Class |
-| 13 | 4 | IntegerLittleEndian |  | AddedExperience |
+| 16 | 4 | IntegerLittleEndian |  | AddedExperience |

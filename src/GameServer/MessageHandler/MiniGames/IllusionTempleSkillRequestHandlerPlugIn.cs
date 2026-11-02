@@ -28,16 +28,30 @@ internal sealed class IllusionTempleSkillRequestHandlerPlugIn : ISubPacketHandle
     /// <inheritdoc />
     public async ValueTask HandlePacketAsync(Player player, Memory<byte> packet)
     {
-        if (packet.Length < IllusionTempleSkillRequest.Length
+        if ((packet.Length != IllusionTempleSkillRequest.Length && packet.Length != IllusionTempleSkillRequestExtended.Length)
+            || packet.Span[1] != packet.Length
             || player.SelectedCharacter?.CharacterClass is null
             || player.CurrentMiniGame is not IllusionTempleContext context)
         {
             return;
         }
 
-        IllusionTempleSkillRequest request = packet;
+        ushort skillNumber;
+        ushort targetObjectIndex;
+        if (packet.Length == IllusionTempleSkillRequest.Length)
+        {
+            IllusionTempleSkillRequest request = packet;
+            skillNumber = request.SkillNumber;
+            targetObjectIndex = request.TargetObjectIndex;
+        }
+        else
+        {
+            IllusionTempleSkillRequestExtended request = packet;
+            skillNumber = request.SkillNumber;
+            targetObjectIndex = request.TargetObjectIndex;
+        }
 
         // Distance is supplied by the client and isn't authoritative; the event context validates range and target.
-        await context.UseSkillAsync(player, request.SkillNumber, request.TargetObjectIndex).ConfigureAwait(false);
+        await context.UseSkillAsync(player, skillNumber, targetObjectIndex).ConfigureAwait(false);
     }
 }

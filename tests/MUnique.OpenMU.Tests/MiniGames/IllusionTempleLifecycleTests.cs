@@ -1,4 +1,4 @@
-// <copyright file="IllusionTempleLifecycleTests.cs" company="MUnique">
+﻿// <copyright file="IllusionTempleLifecycleTests.cs" company="MUnique">
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.
 // </copyright>
 
@@ -683,7 +683,7 @@ public class IllusionTempleLifecycleTests
         Assert.That(reached, Is.True, failureMessage);
     }
 
-    private sealed class TestWorld : IAsyncDisposable
+    internal sealed class TestWorld : IAsyncDisposable
     {
         private TestWorld(GameContext gameContext, MiniGameDefinition definition, IReadOnlyList<Player> players, IllusionTemplePlugIn eventPlugIn)
         {
@@ -723,6 +723,7 @@ public class IllusionTempleLifecycleTests
                 ?? throw new InvalidOperationException("The initialized Illusion Temple definition must use the persistence model.");
             definition.MapCreationPolicy = MiniGameMapCreationPolicy.Shared;
             definition.MaximumPlayerCount = 10;
+            definition.MinimumPlayerCount = 2;
             definition.EnterDuration = TimeSpan.FromSeconds(30);
             definition.GameDuration = TimeSpan.FromMinutes(3);
             definition.ExitDuration = generateRewardItems ? TimeSpan.FromMinutes(1) : TimeSpan.Zero;
@@ -752,6 +753,7 @@ public class IllusionTempleLifecycleTests
             var eventPlugIn = new IllusionTemplePlugIn();
             plugIns.RegisterPlugInAtPlugInPoint<IPeriodicMiniGameStartPlugIn>(startPlugIn);
             plugIns.RegisterPlugInAtPlugInPoint<IAttackableGotKilledPlugIn>(eventPlugIn);
+            plugIns.RegisterPlugInAtPlugInPoint<IPlayerTalkToNpcPlugIn>(eventPlugIn);
             plugIns.RegisterPlugInAtPlugInPoint<IPlayerSpawnGateSelectionPlugIn>(eventPlugIn);
             IDropGenerator drops = generateRewardItems ? new DefaultDropGenerator(configuration, Rand.GetRandomizer()) : NullDropGenerator.Instance;
             var mediator = new ConfigurationChangeMediator();
@@ -796,7 +798,7 @@ public class IllusionTempleLifecycleTests
             return new TestWorld(gameContext, definition, players, eventPlugIn);
         }
 
-        public async ValueTask StartAsync(bool fromPlayerPacket = false)
+        public async ValueTask OpenRegistrationAsync(bool fromPlayerPacket = false)
         {
             async ValueTask OpenRegistrationAsync()
             {
@@ -817,6 +819,11 @@ public class IllusionTempleLifecycleTests
             }
 
             await WaitUntilAsync(() => this.Game.State == MiniGameState.Open, TimeSpan.FromSeconds(5), "The real manager should open IT registration after ForceStart.").ConfigureAwait(false);
+        }
+
+        public async ValueTask StartAsync(bool fromPlayerPacket = false)
+        {
+            await this.OpenRegistrationAsync(fromPlayerPacket).ConfigureAwait(false);
             foreach (var player in this.Players)
             {
                 var ticketDefinition = this.Context.Configuration.Items.Single(item => item.Group == 13 && item.Number == 51);

@@ -1,4 +1,4 @@
-// <copyright file="AddIllusionTempleDataUpdatePlugIn.cs" company="MUnique">
+﻿// <copyright file="AddIllusionTempleDataUpdatePlugIn.cs" company="MUnique">
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.
 // </copyright>
 
@@ -29,6 +29,12 @@ public class AddIllusionTempleDataUpdatePlugIn : UpdatePlugInBase
 
     /// <inheritdoc />
     public override bool IsMandatory => false;
+
+    /// <inheritdoc />
+    public override int Version => 2;
+
+    /// <inheritdoc />
+    public override DateTime UpdatedAt => new(2026, 11, 2, 0, 0, 0, DateTimeKind.Utc);
 
     /// <inheritdoc />
     public override DateTime CreatedAt => new(2026, 10, 24, 0, 0, 0, DateTimeKind.Utc);
