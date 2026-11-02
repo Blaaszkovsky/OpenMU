@@ -86,8 +86,8 @@ internal class AggregateDeletionEfCoreTests
     }
 
     /// <summary>
-    /// Deletes an account which owns a vault and a character with an inventory, and checks that no
-    /// item storage is left behind. The inventory is the case which used to leak: it's referenced BY
+    /// Deletes an account which owns a vault and a character with an inventory, and checks that their
+    /// storages are removed while existing stores remain. The inventory used to leak: it's referenced BY
     /// the character, so no delete cascade of the database reaches it, and the traversal of the
     /// aggregate didn't go deeper than the account's own members.
     /// </summary>
@@ -101,6 +101,7 @@ internal class AggregateDeletionEfCoreTests
             configuration = (await context.GetAsync<GameConfiguration>().ConfigureAwait(false)).Single();
         }
 
+        var initialStorageIds = await GetItemStorageIdsAsync().ConfigureAwait(false);
         using (var context = contextProvider.CreateNewPlayerContext(configuration))
         {
             var account = context.CreateNew<Account>();
@@ -121,7 +122,7 @@ internal class AggregateDeletionEfCoreTests
             await context.SaveChangesAsync().ConfigureAwait(false);
         }
 
-        Assert.That(await CountItemStoragesAsync().ConfigureAwait(false), Is.EqualTo(2), "The vault and the inventory should have been created.");
+        Assert.That(await GetItemStorageIdsAsync().ConfigureAwait(false), Has.Length.EqualTo(initialStorageIds.Length + 2), "The vault and the inventory should have been created.");
 
         using (var context = contextProvider.CreateNewPlayerContext(configuration))
         {
@@ -133,13 +134,13 @@ internal class AggregateDeletionEfCoreTests
             await context.SaveChangesAsync().ConfigureAwait(false);
         }
 
-        Assert.That(await CountItemStoragesAsync().ConfigureAwait(false), Is.EqualTo(0));
+        Assert.That(await GetItemStorageIdsAsync().ConfigureAwait(false), Is.EquivalentTo(initialStorageIds));
     }
 
-    private static async ValueTask<int> CountItemStoragesAsync()
+    private static async ValueTask<Guid[]> GetItemStorageIdsAsync()
     {
         await using var context = new EntityDataContext();
-        return await context.Set<ItemStorageEntity>().CountAsync().ConfigureAwait(false);
+        return await context.Set<ItemStorageEntity>().Select(storage => storage.Id).ToArrayAsync().ConfigureAwait(false);
     }
 
     private sealed class OneDatabaseSettingProvider : IDatabaseConnectionSettingProvider
