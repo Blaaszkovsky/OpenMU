@@ -62,15 +62,6 @@ public sealed class IllusionTempleContext : MiniGameContext
         ? this.Definition.MinimumPlayerCount : this._settings.MinimumPlayers;
 
     /// <inheritdoc />
-    public override ExitGate? GetSpawnGate(Player player) => this.GetTeamSpawnGate(player);
-
-    /// <inheritdoc />
-    protected override bool IsWinner(Player player) => this.GetTeam(player) == this._winningTeam && this._winningTeam < 2;
-
-    /// <inheritdoc />
-    protected override bool IsInWinningParty(Player player) => this.IsWinner(player);
-
-    /// <inheritdoc />
     protected override bool AllowDeadPlayerRejoin => true;
 
     /// <inheritdoc />
@@ -79,6 +70,9 @@ public sealed class IllusionTempleContext : MiniGameContext
 
     private bool IsMatchPlaying => !this.IsDisposed && !this.IsDisposing
         && this.State == MiniGameState.Playing && !this.GameEndedToken.IsCancellationRequested;
+
+    /// <inheritdoc />
+    public override ExitGate? GetSpawnGate(Player player) => this.GetTeamSpawnGate(player);
 
     /// <inheritdoc />
     public override bool IsItemAllowedToEquip(Item item) => !item.IsTransformationRing();
@@ -266,6 +260,12 @@ public sealed class IllusionTempleContext : MiniGameContext
             }
         }).ConfigureAwait(false);
     }
+
+    /// <inheritdoc />
+    protected override bool IsWinner(Player player) => this.GetTeam(player) == this._winningTeam && this._winningTeam < 2;
+
+    /// <inheritdoc />
+    protected override bool IsInWinningParty(Player player) => this.IsWinner(player);
 
     /// <inheritdoc />
     protected override async ValueTask OnGameStartAsync(ICollection<Player> players)
