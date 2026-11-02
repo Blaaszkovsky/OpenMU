@@ -37,6 +37,9 @@ internal abstract class IllusionTempleBase : BaseMapInitializer
     }
 
     /// <inheritdoc />
+    protected override byte SafezoneMapNumber => Devias.Number;
+
+    /// <inheritdoc />
     protected override IEnumerable<MonsterSpawnArea> CreateMonsterSpawns()
     {
         short number = 200;
