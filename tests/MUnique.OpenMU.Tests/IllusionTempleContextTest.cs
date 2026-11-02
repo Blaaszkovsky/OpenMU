@@ -12,6 +12,7 @@ using MUnique.OpenMU.GameLogic.MiniGames.IllusionTemple;
 using MUnique.OpenMU.GameLogic.NPC;
 using MUnique.OpenMU.GameLogic.PlayerActions;
 using MUnique.OpenMU.GameLogic.PlayerActions.Items;
+using MUnique.OpenMU.GameLogic.PlayerActions.MiniGames;
 using MUnique.OpenMU.Pathfinding;
 using Moq;
 using World = MUnique.OpenMU.Tests.MiniGames.IllusionTempleLifecycleTests.TestWorld;

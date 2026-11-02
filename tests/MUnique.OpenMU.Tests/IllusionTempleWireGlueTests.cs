@@ -90,7 +90,8 @@ public class IllusionTempleWireGlueTests
     public async Task ResultViewSerializesScoresAndRewardRowsAsync()
     {
         var (player, output) = CastleSiegeRemoteViewTestHelper.CreatePlayer();
-        player.Connection.Output.GetSpan(47)[..47].Fill(0xCC);
+        var connection = player.Connection ?? throw new AssertionException("The remote fixture must have its configured connection.");
+        connection.Output.GetSpan(47)[..47].Fill(0xCC);
         await new IllusionTempleViewPlugIn(player).ShowResultAsync(7, 3,
             [(player, (byte)1, 123456), (player, (byte)0, 654321)]).ConfigureAwait(false);
 
@@ -241,8 +242,9 @@ public class IllusionTempleWireGlueTests
         var opponents = world.Players.Where(player => world.Game.GetTeam(player) != world.Game.GetTeam(caster)).ToArray();
         caster.Position = new Point(100, 100);
         opponents[0].Position = caster.Position;
-        opponents[0].Attributes![Stats.CurrentShield] = 0;
-        opponents[0].Attributes[Stats.CurrentHealth] = 1;
+        var victimAttributes = opponents[0].Attributes ?? throw new AssertionException("The combat fixture must initialize the opposing player's attributes.");
+        victimAttributes[Stats.CurrentShield] = 0;
+        victimAttributes[Stats.CurrentHealth] = 1;
         await opponents[0].AttackByAsync(caster, null, false).ConfigureAwait(false);
         Assert.That(opponents[0].IsAlive, Is.False, "The caster must earn its points through normal opposing-player combat.");
         opponents[1].Position = new Point(101, 100);

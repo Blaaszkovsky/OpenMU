@@ -12,6 +12,7 @@ using MUnique.OpenMU.DataModel.Entities;
 using MUnique.OpenMU.Interfaces;
 using MUnique.OpenMU.Persistence.EntityFramework;
 using MUnique.OpenMU.Persistence.EntityFramework.Json;
+using MUnique.OpenMU.PlugIns;
 using Npgsql;
 using ItemStorageEntity = MUnique.OpenMU.Persistence.EntityFramework.Model.ItemStorage;
 
