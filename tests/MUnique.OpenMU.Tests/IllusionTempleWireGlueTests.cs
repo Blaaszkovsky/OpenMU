@@ -96,7 +96,7 @@ public class IllusionTempleWireGlueTests
 
         var data = output.ToArray().AsMemory();
         var result = (IllusionTempleResult)data;
-        Assert.That(data.Length, Is.EqualTo(IllusionTempleResultRef.GetRequiredSize(1)));
+        Assert.That(data.Length, Is.EqualTo(IllusionTempleResultRef.GetRequiredSize(2)));
         Assert.That(result.Team1Points, Is.EqualTo(7));
         Assert.That(result.Team2Points, Is.EqualTo(3));
         Assert.That(result.PlayerCount, Is.EqualTo(2));
