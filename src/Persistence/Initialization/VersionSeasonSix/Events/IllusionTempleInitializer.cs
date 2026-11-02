@@ -167,7 +167,7 @@ internal class IllusionTempleInitializer : InitializerBase
         relic.SetGuid(14, 64);
         relic.Group = 14;
         relic.Number = 64;
-        relic.Name = ItemNames.ResourceManager.GetLocalizedString("IllusionTempleRelic");
+        relic.Name = ItemNames.ResourceManager.GetLocalizedString("CursedCastleWater");
         relic.Width = 1;
         relic.Height = 1;
         relic.Durability = 1;
@@ -273,8 +273,8 @@ internal class IllusionTempleInitializer : InitializerBase
         var bracket = Brackets[level - 1];
         var definition = this.Context.CreateNew<MiniGameDefinition>();
         definition.SetGuid((short)MiniGameType.IllusionTemple, level);
-        definition.Name = map.Name;
-        definition.Description = MiniGameDescriptions.ResourceManager.GetLocalizedString("IllusionTempleEvent");
+        definition.Name = MiniGameNames.ResourceManager.GetLocalizedString($"IllusionTemple{level}");
+        definition.Description = MiniGameDescriptions.ResourceManager.GetLocalizedString($"EventDefinitionForIllusionTempleEventLevel{level}");
         definition.Type = MiniGameType.IllusionTemple;
         definition.GameLevel = level;
         definition.IntroducedIn = IntroducedGameVersions.MiniGames[(MiniGameType.IllusionTemple, level)];

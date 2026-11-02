@@ -21,6 +21,9 @@ using MUnique.OpenMU.Persistence.InMemory;
 [NonParallelizable]
 internal class ItemNameResourcesTests
 {
+    // Persisted fork captions retain this source, while new data uses the canonical resource keys.
+    private const string LegacyIllusionTempleRelicSourceKey = "ItemNames/IllusionTempleRelic";
+
     /// <summary>
     /// Persisted source keys resolve without initializing a reference configuration.
     /// </summary>
@@ -44,6 +47,19 @@ internal class ItemNameResourcesTests
         Assert.That(new LocalizedString("Jewel of Bless").WithSourceKey("ItemNames/JewelOfBless").GetFromSource()?.GetOwnTranslation(german), Is.EqualTo("Juwel des Segens"));
         Assert.That(new LocalizedString("Great Dragon Helm").WithSourceKey("ItemNames/GreatDragonHelm").GetFromSource()?.GetOwnTranslation(german), Is.EqualTo("Großartiger Drachenhelm"));
         Assert.That(new LocalizedString("Kris").WithSourceKey("ItemNames/Kris").GetFromSource()?.GetOwnTranslation(german), Is.Null, "names which are equal in German fall back to the neutral name");
+    }
+
+    /// <summary>Previously persisted captions retain their source translations after fresh data changes.</summary>
+    /// <param name="cultureName">The language of the stored translation.</param>
+    /// <param name="expected">The existing resource translation.</param>
+    [TestCase("en", "Illusion Temple relic")]
+    [TestCase("de", "Relikt des Illusionstempels")]
+    [TestCase("zh-CN", "幻影寺院圣物")]
+    public void LegacyIllusionTempleRelicNamesRemainResolvable(string cultureName, string expected)
+    {
+        ConfigurationNameSources.Register();
+        var persisted = new LocalizedString("Previously persisted caption").WithSourceKey(LegacyIllusionTempleRelicSourceKey);
+        Assert.That(persisted.GetFromSource()?.GetOwnTranslation(CultureInfo.GetCultureInfo(cultureName)), Is.EqualTo(expected));
     }
 
     /// <summary>
@@ -105,7 +121,8 @@ internal class ItemNameResourcesTests
         if (version == "Season6")
         {
             var keys = ItemNames.ResourceManager.GetResourceSet(CultureInfo.InvariantCulture, true, false)!
-                .Cast<DictionaryEntry>().Select(entry => $"ItemNames/{entry.Key}").ToArray();
+                .Cast<DictionaryEntry>().Select(entry => $"ItemNames/{entry.Key}")
+                .Where(key => key != LegacyIllusionTempleRelicSourceKey).ToArray();
             Assert.That(referenceNames.Select(name => name.SourceKey).Distinct(), Is.EquivalentTo(keys));
         }
     }

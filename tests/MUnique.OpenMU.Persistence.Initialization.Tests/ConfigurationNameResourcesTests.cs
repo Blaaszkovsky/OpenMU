@@ -19,6 +19,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 [NonParallelizable]
 internal class ConfigurationNameResourcesTests
 {
+    // Persisted fork captions retain this source, while new data uses the canonical resource keys.
+    private const string LegacyIllusionTempleDescriptionSourceKey = "MiniGameDescriptions/IllusionTempleEvent";
+
     private static readonly (string Name, ResourceManager ResourceManager)[] Sources =
     [
         (nameof(CharacterClassNames), CharacterClassNames.ResourceManager),
@@ -123,8 +126,22 @@ internal class ConfigurationNameResourcesTests
         }
 
         var allSourceKeys = Sources.SelectMany(source => GetKeys(source.ResourceManager, CultureInfo.InvariantCulture)
-            .Select(key => LocalizedStringResources.CreateSourceKey(source.Name, key)));
+            .Select(key => LocalizedStringResources.CreateSourceKey(source.Name, key)))
+            .Where(key => key != LegacyIllusionTempleDescriptionSourceKey);
         Assert.That(usedSourceKeys, Is.EquivalentTo(allSourceKeys));
+    }
+
+    /// <summary>Previously persisted captions retain their source translations after fresh data changes.</summary>
+    /// <param name="cultureName">The language of the stored translation.</param>
+    /// <param name="expected">The existing resource translation.</param>
+    [TestCase("en", "A team battle to carry sacred relics to your team's storage.")]
+    [TestCase("de", "Ein Teamkampf, bei dem heilige Relikte zum Lager des eigenen Teams gebracht werden.")]
+    [TestCase("zh-CN", "将圣物送回己方仓库的团队战斗。")]
+    public void LegacyIllusionTempleDescriptionsRemainResolvable(string cultureName, string expected)
+    {
+        ConfigurationNameSources.Register();
+        var persisted = new LocalizedString("Previously persisted caption").WithSourceKey(LegacyIllusionTempleDescriptionSourceKey);
+        Assert.That(persisted.GetFromSource()?.GetOwnTranslation(CultureInfo.GetCultureInfo(cultureName)), Is.EqualTo(expected));
     }
 
     private static IReadOnlyList<string> GetKeys(ResourceManager resourceManager, CultureInfo culture)
