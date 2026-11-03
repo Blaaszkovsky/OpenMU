@@ -9,18 +9,18 @@ using MUnique.OpenMU.Network.Packets.ServerToClient;
 using ClientPackets = MUnique.OpenMU.Network.Packets.ClientToServer;
 
 /// <summary>
-/// Verifies the packed Season Six Illusion Temple wire contract including the original result alignment padding.
+/// Verifies the Season Six Illusion Temple wire contract including its alignment padding.
 /// </summary>
 [TestFixture]
 public class IllusionTemplePacketContractTests
 {
     /// <summary>
-    /// The remaining time and relic holder occupy different words, followed by five-byte team entries.
+    /// The remaining time and relic holder occupy different words, followed by six-byte team entries.
     /// </summary>
     [Test]
     public void StateKeepsRemainingTimeAndCarrierSeparate()
     {
-        var data = new byte[19];
+        var data = new byte[20];
         var packet = new IllusionTempleState(data)
         {
             RemainingSeconds = 513,
@@ -40,9 +40,9 @@ public class IllusionTemplePacketContractTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(IllusionTempleStateRef.GetRequiredSize(1), Is.EqualTo(19));
+            Assert.That(IllusionTempleStateRef.GetRequiredSize(1), Is.EqualTo(20));
             Assert.That(data[4..14], Is.EqualTo(new byte[] { 1, 2, 0x34, 0x12, 80, 90, 2, 3, 1, 1 }));
-            Assert.That(data[14..19], Is.EqualTo(new byte[] { 0x78, 0x56, 45, 70, 75 }));
+            Assert.That(data[14..20], Is.EqualTo(new byte[] { 0x78, 0x56, 45, 70, 75, 0 }));
         });
     }
 
@@ -52,7 +52,7 @@ public class IllusionTemplePacketContractTests
     [Test]
     public void TeamMapNumberDoesNotOverwritePosition()
     {
-        var data = new byte[19];
+        var data = new byte[20];
         var packet = new IllusionTempleState(data) { PartyCount = 1 };
         var member = packet[0];
         member.PositionX = 123;
@@ -60,6 +60,30 @@ public class IllusionTemplePacketContractTests
         member.MapNumber = 45;
 
         Assert.That(member.PositionX, Is.EqualTo(123));
+    }
+
+    /// <summary>
+    /// Skill results align both full object identifiers after the reserved eighth byte.
+    /// </summary>
+    [Test]
+    public void SkillResultUsesAlignedFullObjectIdentifiers()
+    {
+        var data = new byte[12];
+        _ = new IllusionTempleSkillUsageResult(data)
+        {
+            Result = 1,
+            SkillNumber = 0x1234,
+            SourceObjectId = 0x5678,
+            TargetObjectId = 0x9ABC,
+        };
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(IllusionTempleSkillUsageResult.Length, Is.EqualTo(12));
+            Assert.That(data[..8], Is.EqualTo(new byte[] { 0xC1, 12, 0xBF, 2, 1, 0x12, 0x34, 0 }));
+            Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(8)), Is.EqualTo(0x5678));
+            Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(10)), Is.EqualTo(0x9ABC));
+        });
     }
 
     /// <summary>
@@ -111,8 +135,15 @@ public class IllusionTemplePacketContractTests
     {
         var data = new byte[6];
         _ = new IllusionTempleEventState(data) { TempleNumber = 1, State = IllusionTempleEventState.EventState.BattleStarted };
+        var ended = new byte[8];
+        _ = new IllusionTempleSkillEnded(ended) { SkillNumber = 213, ObjectIndex = 0x1234 };
 
-        Assert.That(data[..4], Is.EqualTo(new byte[] { 0xC1, 6, 0xBF, 9 }));
+        Assert.Multiple(() =>
+        {
+            Assert.That(data[..4], Is.EqualTo(new byte[] { 0xC1, 6, 0xBF, 9 }));
+            Assert.That(ended[..4], Is.EqualTo(new byte[] { 0xC1, 8, 0xBF, 7 }));
+            Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(ended.AsSpan(6)), Is.EqualTo(0x1234));
+        });
     }
 
     /// <summary>The original request keeps its byte target and eighth-byte distance.</summary>

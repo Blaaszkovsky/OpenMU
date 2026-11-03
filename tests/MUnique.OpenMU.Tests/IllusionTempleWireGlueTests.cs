@@ -45,13 +45,19 @@ public class IllusionTempleWireGlueTests
         var points = (IllusionTempleSkillPointUpdate)Next(IllusionTempleSkillPointUpdate.Length);
         Assert.That(points.SkillPoints, Is.EqualTo(6));
 
+        var skillOffset = offset;
         var skill = (IllusionTempleSkillUsageResult)Next(IllusionTempleSkillUsageResult.Length);
+        Assert.That(data.Span[skillOffset + 1], Is.EqualTo(12));
+        Assert.That(data.Span[skillOffset + 7], Is.Zero);
         Assert.That(skill.Result, Is.EqualTo(1));
         Assert.That(skill.SkillNumber, Is.EqualTo(0x1234));
         Assert.That(skill.SourceObjectId, Is.EqualTo(ViewExtensions.ConstantPlayerId));
         Assert.That(skill.TargetObjectId, Is.EqualTo(ViewExtensions.ConstantPlayerId));
 
+        var skillEndOffset = offset;
         var skillEnd = (IllusionTempleSkillEnded)Next(IllusionTempleSkillEnded.Length);
+        Assert.That(data.Span[skillEndOffset + 1], Is.EqualTo(8));
+        Assert.That(data.Span[skillEndOffset + 3], Is.EqualTo(7));
         Assert.That(skillEnd.SkillNumber, Is.EqualTo(0x2345));
         Assert.That(skillEnd.ObjectIndex, Is.EqualTo(ViewExtensions.ConstantPlayerId));
 
@@ -74,6 +80,8 @@ public class IllusionTempleWireGlueTests
         var data = output.ToArray().AsMemory();
         var state = (IllusionTempleState)data;
         Assert.That(data.Length, Is.EqualTo(IllusionTempleStateRef.GetRequiredSize(1)));
+        Assert.That(data.Length, Is.EqualTo(20));
+        Assert.That(data.Span[19], Is.Zero);
         Assert.That(state.RemainingSeconds, Is.EqualTo(42));
         Assert.That(state.RelicCarrierId, Is.EqualTo(ViewExtensions.ConstantPlayerId));
         Assert.That(state.PositionX, Is.EqualTo(17));

@@ -556,6 +556,15 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Blood Castle Ticket.
+        /// </summary>
+        public static string BloodCastleFreeTicket {
+            get {
+                return ResourceManager.GetString("BloodCastleFreeTicket", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Blue Chocolate Box.
         /// </summary>
         public static string BlueChocolateBox {
@@ -925,6 +934,15 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Open Access Ticket to Chaos Castle.
+        /// </summary>
+        public static string ChaosCastleFreeTicket {
+            get {
+                return ResourceManager.GetString("ChaosCastleFreeTicket", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Chaos Dragon Axe.
         /// </summary>
         public static string ChaosDragonAxe {
@@ -1128,6 +1146,15 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         public static string CrystalSword {
             get {
                 return ResourceManager.GetString("CrystalSword", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Cursed Castle Water.
+        /// </summary>
+        public static string CursedCastleWater {
+            get {
+                return ResourceManager.GetString("CursedCastleWater", resourceCulture);
             }
         }
 
@@ -1461,6 +1488,15 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         public static string DevilSKey {
             get {
                 return ResourceManager.GetString("DevilSKey", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Devil Square Ticket.
+        /// </summary>
+        public static string DevilSquareFreeTicket {
+            get {
+                return ResourceManager.GetString("DevilSquareFreeTicket", resourceCulture);
             }
         }
 
@@ -2613,6 +2649,15 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         public static string IllusionSorcererCovenant {
             get {
                 return ResourceManager.GetString("IllusionSorcererCovenant", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Illusion Temple Ticket.
+        /// </summary>
+        public static string IllusionTempleFreeTicket {
+            get {
+                return ResourceManager.GetString("IllusionTempleFreeTicket", resourceCulture);
             }
         }
 
@@ -6339,13 +6384,6 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         public static string WizardSRing {
             get {
                 return ResourceManager.GetString("WizardSRing", resourceCulture);
-            }
-        }
-
-        /// <summary>Gets CursedCastleWater from the configuration name resources.</summary>
-        public static string CursedCastleWater {
-            get {
-                return ResourceManager.GetString("CursedCastleWater", resourceCulture);
             }
         }
     }
