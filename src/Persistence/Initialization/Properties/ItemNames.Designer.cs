@@ -4210,6 +4210,51 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Reset Fruit (Agility).
+        /// </summary>
+        public static string ResetFruitAgility {
+            get {
+                return ResourceManager.GetString("ResetFruitAgility", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Reset Fruit (Command).
+        /// </summary>
+        public static string ResetFruitCommand {
+            get {
+                return ResourceManager.GetString("ResetFruitCommand", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Reset Fruit (Energy).
+        /// </summary>
+        public static string ResetFruitEnergy {
+            get {
+                return ResourceManager.GetString("ResetFruitEnergy", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Reset Fruit (Strength).
+        /// </summary>
+        public static string ResetFruitStrength {
+            get {
+                return ResourceManager.GetString("ResetFruitStrength", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Reset Fruit (Vitality).
+        /// </summary>
+        public static string ResetFruitVitality {
+            get {
+                return ResourceManager.GetString("ResetFruitVitality", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Ring of Earth.
         /// </summary>
         public static string RingOfEarth {

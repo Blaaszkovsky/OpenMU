@@ -853,6 +853,24 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to This update adds the reset fruits of strength, agility, vitality, energy and command, which take back invested points of a stat and return them as level up points. The packages of the in-game shop which contain them are put on sale..
+        /// </summary>
+        public static string AddResetFruitsUpdatePlugIn_Description {
+            get {
+                return ResourceManager.GetString("AddResetFruitsUpdatePlugIn_Description", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Add reset fruits.
+        /// </summary>
+        public static string AddResetFruitsUpdatePlugIn_Name {
+            get {
+                return ResourceManager.GetString("AddResetFruitsUpdatePlugIn_Name", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Adds the ring, which can be dropped at level 40..
         /// </summary>
         public static string AddRingOfWarriorLevel40ForNewCharacters_Description {
