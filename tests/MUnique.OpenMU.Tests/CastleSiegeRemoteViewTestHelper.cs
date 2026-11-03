@@ -4,6 +4,7 @@
 
 namespace MUnique.OpenMU.Tests;
 
+using System.Diagnostics.Metrics;
 using System.IO;
 using System.IO.Pipelines;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -23,12 +24,16 @@ using Nito.AsyncEx;
 /// </summary>
 internal static class CastleSiegeRemoteViewTestHelper
 {
+    private static readonly Meter OutputMeter = new(typeof(CastleSiegeRemoteViewTestHelper).FullName ?? nameof(CastleSiegeRemoteViewTestHelper));
+    private static readonly Counter<long> OutputBytesCounter = OutputMeter.CreateCounter<long>("OutgoingBytes", "bytes");
+
     /// <summary>
     /// Creates a remote player and its packet output stream.
     /// </summary>
     /// <param name="clientVersion">The client version of the player.</param>
+    /// <param name="productionOutput">Whether to use the production output wrapper instead of the raw writer.</param>
     /// <returns>The remote player and output stream.</returns>
-    internal static (RemotePlayer Player, MemoryStream Output) CreatePlayer(ClientVersion clientVersion = default)
+    internal static (RemotePlayer Player, MemoryStream Output) CreatePlayer(ClientVersion clientVersion = default, bool productionOutput = false)
     {
         var manager = new PlugInManager(null, new NullLoggerFactory(), null, null);
         var gameContext = new Mock<IGameServerContext>();
@@ -38,7 +43,7 @@ internal static class CastleSiegeRemoteViewTestHelper
         gameContext.Setup(c => c.PlugInManager).Returns(manager);
         gameContext.Setup(c => c.FeaturePlugIns).Returns(new FeaturePlugInContainer(manager));
         gameContext.Setup(c => c.LoggerFactory).Returns(new NullLoggerFactory());
-        return CreatePlayer(gameContext.Object, clientVersion);
+        return CreatePlayer(gameContext.Object, clientVersion, productionOutput);
     }
 
     /// <summary>
@@ -46,11 +51,17 @@ internal static class CastleSiegeRemoteViewTestHelper
     /// </summary>
     /// <param name="gameContext">The game-server context.</param>
     /// <param name="clientVersion">The client version of the player.</param>
+    /// <param name="productionOutput">Whether to use the production output wrapper instead of the raw writer.</param>
     /// <returns>The remote player and output stream.</returns>
-    internal static (RemotePlayer Player, MemoryStream Output) CreatePlayer(IGameServerContext gameContext, ClientVersion clientVersion = default)
+    internal static (RemotePlayer Player, MemoryStream Output) CreatePlayer(IGameServerContext gameContext, ClientVersion clientVersion = default, bool productionOutput = false)
     {
         var output = new MemoryStream();
-        var writer = PipeWriter.Create(output, new StreamPipeWriterOptions(leaveOpen: true));
+        PipeWriter writer = PipeWriter.Create(output, new StreamPipeWriterOptions(leaveOpen: true));
+        if (productionOutput)
+        {
+            writer = new ExtendedPipeWriter(writer, OutputBytesCounter);
+        }
+
         var connection = new Mock<IConnection>();
         connection.SetupGet(c => c.Connected).Returns(true);
         connection.SetupGet(c => c.Output).Returns(writer);

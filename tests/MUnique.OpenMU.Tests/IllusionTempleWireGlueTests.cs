@@ -28,11 +28,13 @@ public class IllusionTempleWireGlueTests
     [Test]
     public async Task PhaseAndSkillViewsUseIllusionTemplePacketsAsync()
     {
-        var (player, output) = CastleSiegeRemoteViewTestHelper.CreatePlayer();
+        var (player, output) = CastleSiegeRemoteViewTestHelper.CreatePlayer(productionOutput: true);
         var view = new IllusionTempleViewPlugIn(player);
 
         await view.ShowPhaseAsync(3, 2).ConfigureAwait(false);
         await view.ShowSkillPointsAsync(6).ConfigureAwait(false);
+        var connection = player.Connection ?? throw new AssertionException("The remote fixture must have its configured connection.");
+        connection.Output.GetSpan(12)[..12].Fill(0xCC);
         await view.ShowSkillResultAsync(0x1234, player, player, true).ConfigureAwait(false);
         await view.ShowSkillEndAsync(0x2345, player).ConfigureAwait(false);
 
@@ -73,7 +75,9 @@ public class IllusionTempleWireGlueTests
     [Test]
     public async Task StateViewSerializesHolderScoresAndMembersAsync()
     {
-        var (player, output) = CastleSiegeRemoteViewTestHelper.CreatePlayer();
+        var (player, output) = CastleSiegeRemoteViewTestHelper.CreatePlayer(productionOutput: true);
+        var connection = player.Connection ?? throw new AssertionException("The remote fixture must have its configured connection.");
+        connection.Output.GetSpan(20)[..20].Fill(0xCC);
         await new IllusionTempleViewPlugIn(player).ShowStateAsync(
             TimeSpan.FromSeconds(42), player, new Point(17, 29), 4, 2, 1, [player]).ConfigureAwait(false);
 

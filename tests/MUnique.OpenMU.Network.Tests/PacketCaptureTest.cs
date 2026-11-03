@@ -257,6 +257,25 @@ public class PacketCaptureTest
     }
 
     /// <summary>
+    /// Tests if the real connection output clears reused packet memory with and without capturing.
+    /// </summary>
+    /// <param name="withSink">If set to <c>true</c>, a capture sink is registered.</param>
+    [TestCase(false)]
+    [TestCase(true)]
+    public void OutputSpanClearsDirtyBuffer(bool withSink)
+    {
+        var duplexPipe = new DuplexPipe();
+        using var connection = new Connection(duplexPipe, null, null, new NullLogger<Connection>());
+        if (withSink)
+        {
+            connection.AddCaptureSink(new CapturingSink());
+        }
+
+        duplexPipe.SendPipe.Writer.GetSpan(12)[..12].Fill(0xCC);
+        Assert.That(connection.Output.GetSpan(12)[..12].ToArray(), Is.EqualTo(new byte[12]));
+    }
+
+    /// <summary>
     /// Tests if an exception of a sink doesn't bubble up to the connection.
     /// </summary>
     /// <returns>The async task.</returns>
