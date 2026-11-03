@@ -142,6 +142,15 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Amethyst Ring.
+        /// </summary>
+        public static string AmethystRing {
+            get {
+                return ResourceManager.GetString("AmethystRing", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Ancient Armor.
         /// </summary>
         public static string AncientArmor {
@@ -318,6 +327,42 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         public static string AshcrowPants {
             get {
                 return ResourceManager.GetString("AshcrowPants", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Atlans Armor.
+        /// </summary>
+        public static string AtlansArmor {
+            get {
+                return ResourceManager.GetString("AtlansArmor", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Atlans Boots.
+        /// </summary>
+        public static string AtlansBoots {
+            get {
+                return ResourceManager.GetString("AtlansBoots", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Atlans Gloves.
+        /// </summary>
+        public static string AtlansGloves {
+            get {
+                return ResourceManager.GetString("AtlansGloves", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Atlans Pants.
+        /// </summary>
+        public static string AtlansPants {
+            get {
+                return ResourceManager.GetString("AtlansPants", resourceCulture);
             }
         }
 
@@ -1861,11 +1906,83 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Elite Healing Potion.
+        /// </summary>
+        public static string EliteHealingPotion {
+            get {
+                return ResourceManager.GetString("EliteHealingPotion", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Elite Mana Potion.
+        /// </summary>
+        public static string EliteManaPotion {
+            get {
+                return ResourceManager.GetString("EliteManaPotion", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Elite SD Potion.
+        /// </summary>
+        public static string EliteShieldPotion {
+            get {
+                return ResourceManager.GetString("EliteShieldPotion", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Elite Skeleton Transformation Ring.
         /// </summary>
         public static string EliteSkeletonTransformationRing {
             get {
                 return ResourceManager.GetString("EliteSkeletonTransformationRing", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Elixir of Agility.
+        /// </summary>
+        public static string ElixirOfAgility {
+            get {
+                return ResourceManager.GetString("ElixirOfAgility", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Elixir of Control.
+        /// </summary>
+        public static string ElixirOfControl {
+            get {
+                return ResourceManager.GetString("ElixirOfControl", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Elixir of Energy.
+        /// </summary>
+        public static string ElixirOfEnergy {
+            get {
+                return ResourceManager.GetString("ElixirOfEnergy", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Elixir of Health.
+        /// </summary>
+        public static string ElixirOfHealth {
+            get {
+                return ResourceManager.GetString("ElixirOfHealth", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Elixir of Strength.
+        /// </summary>
+        public static string ElixirOfStrength {
+            get {
+                return ResourceManager.GetString("ElixirOfStrength", resourceCulture);
             }
         }
 
@@ -1893,6 +2010,15 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         public static string ElvenShield {
             get {
                 return ResourceManager.GetString("ElvenShield", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Emerald Necklace.
+        /// </summary>
+        public static string EmeraldNecklace {
+            get {
+                return ResourceManager.GetString("EmeraldNecklace", resourceCulture);
             }
         }
 
@@ -2019,6 +2145,51 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         public static string Firecracker {
             get {
                 return ResourceManager.GetString("Firecracker", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 1st Lucky Armor Ticket.
+        /// </summary>
+        public static string FirstLuckyArmorTicket {
+            get {
+                return ResourceManager.GetString("FirstLuckyArmorTicket", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 1st Lucky Boots Ticket.
+        /// </summary>
+        public static string FirstLuckyBootsTicket {
+            get {
+                return ResourceManager.GetString("FirstLuckyBootsTicket", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 1st Lucky Gloves Ticket.
+        /// </summary>
+        public static string FirstLuckyGlovesTicket {
+            get {
+                return ResourceManager.GetString("FirstLuckyGlovesTicket", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 1st Lucky Helm Ticket.
+        /// </summary>
+        public static string FirstLuckyHelmTicket {
+            get {
+                return ResourceManager.GetString("FirstLuckyHelmTicket", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 1st Lucky Pants Ticket.
+        /// </summary>
+        public static string FirstLuckyPantsTicket {
+            get {
+                return ResourceManager.GetString("FirstLuckyPantsTicket", resourceCulture);
             }
         }
 
@@ -2860,6 +3031,24 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Jewel of Elevation.
+        /// </summary>
+        public static string JewelOfElevation {
+            get {
+                return ResourceManager.GetString("JewelOfElevation", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Jewel of Extension.
+        /// </summary>
+        public static string JewelOfExtension {
+            get {
+                return ResourceManager.GetString("JewelOfExtension", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Jewel of Guardian.
         /// </summary>
         public static string JewelOfGuardian {
@@ -2892,6 +3081,15 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         public static string JewelOfSoul {
             get {
                 return ResourceManager.GetString("JewelOfSoul", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Kalima Ticket.
+        /// </summary>
+        public static string KalimaTicket {
+            get {
+                return ResourceManager.GetString("KalimaTicket", resourceCulture);
             }
         }
 
@@ -3090,6 +3288,15 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         public static string LegendarySword {
             get {
                 return ResourceManager.GetString("LegendarySword", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Lethal Wizard&apos;s Ring.
+        /// </summary>
+        public static string LethalWizardsRing {
+            get {
+                return ResourceManager.GetString("LethalWizardsRing", resourceCulture);
             }
         }
 
@@ -3310,11 +3517,56 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Master Seal of Ascension.
+        /// </summary>
+        public static string MasterSealOfAscension {
+            get {
+                return ResourceManager.GetString("MasterSealOfAscension", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Master Seal of Wealth.
+        /// </summary>
+        public static string MasterSealOfWealth {
+            get {
+                return ResourceManager.GetString("MasterSealOfWealth", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Max AG Boost Aura.
+        /// </summary>
+        public static string MaxAgBoostAura {
+            get {
+                return ResourceManager.GetString("MaxAgBoostAura", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Max SD Boost Aura.
+        /// </summary>
+        public static string MaxSdBoostAura {
+            get {
+                return ResourceManager.GetString("MaxSdBoostAura", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Medium Complex Potion.
         /// </summary>
         public static string MediumComplexPotion {
             get {
                 return ResourceManager.GetString("MediumComplexPotion", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Medium Elite Healing Potion.
+        /// </summary>
+        public static string MediumEliteHealingPotion {
+            get {
+                return ResourceManager.GetString("MediumEliteHealingPotion", resourceCulture);
             }
         }
 
@@ -4309,6 +4561,24 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Ruby Necklace.
+        /// </summary>
+        public static string RubyNecklace {
+            get {
+                return ResourceManager.GetString("RubyNecklace", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Ruby Ring.
+        /// </summary>
+        public static string RubyRing {
+            get {
+                return ResourceManager.GetString("RubyRing", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Rune Blade.
         /// </summary>
         public static string RuneBlade {
@@ -4381,6 +4651,24 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Sapphire Necklace.
+        /// </summary>
+        public static string SapphireNecklace {
+            get {
+                return ResourceManager.GetString("SapphireNecklace", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Sapphire Ring.
+        /// </summary>
+        public static string SapphireRing {
+            get {
+                return ResourceManager.GetString("SapphireRing", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Scale Armor.
         /// </summary>
         public static string ScaleArmor {
@@ -4444,6 +4732,15 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Scroll of Battle.
+        /// </summary>
+        public static string ScrollOfBattle {
+            get {
+                return ResourceManager.GetString("ScrollOfBattle", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Scroll of Blood.
         /// </summary>
         public static string ScrollOfBlood {
@@ -4485,6 +4782,15 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         public static string ScrollOfDecay {
             get {
                 return ResourceManager.GetString("ScrollOfDecay", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Scroll of Defense.
+        /// </summary>
+        public static string ScrollOfDefense {
+            get {
+                return ResourceManager.GetString("ScrollOfDefense", resourceCulture);
             }
         }
 
@@ -4561,6 +4867,24 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Scroll of Healing.
+        /// </summary>
+        public static string ScrollOfHealing {
+            get {
+                return ResourceManager.GetString("ScrollOfHealing", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Scroll of Health.
+        /// </summary>
+        public static string ScrollOfHealth {
+            get {
+                return ResourceManager.GetString("ScrollOfHealth", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Scroll of Hellfire.
         /// </summary>
         public static string ScrollOfHellfire {
@@ -4606,6 +4930,15 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Scroll of Mana.
+        /// </summary>
+        public static string ScrollOfMana {
+            get {
+                return ResourceManager.GetString("ScrollOfMana", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Scroll of Meteorite.
         /// </summary>
         public static string ScrollOfMeteorite {
@@ -4642,11 +4975,29 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Scroll of Quickness.
+        /// </summary>
+        public static string ScrollOfQuickness {
+            get {
+                return ResourceManager.GetString("ScrollOfQuickness", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Scroll of Soul Barrier.
         /// </summary>
         public static string ScrollOfSoulBarrier {
             get {
                 return ResourceManager.GetString("ScrollOfSoulBarrier", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Scroll of Strength.
+        /// </summary>
+        public static string ScrollOfStrength {
+            get {
+                return ResourceManager.GetString("ScrollOfStrength", resourceCulture);
             }
         }
 
@@ -4687,11 +5038,119 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Scroll of Wizardry.
+        /// </summary>
+        public static string ScrollOfWizardry {
+            get {
+                return ResourceManager.GetString("ScrollOfWizardry", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Scroll of Wizardry Enhance.
         /// </summary>
         public static string ScrollOfWizardryEnhance {
             get {
                 return ResourceManager.GetString("ScrollOfWizardryEnhance", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Scroll of Wrath.
+        /// </summary>
+        public static string ScrollOfWrath {
+            get {
+                return ResourceManager.GetString("ScrollOfWrath", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Seal of Ascension.
+        /// </summary>
+        public static string SealOfAscension {
+            get {
+                return ResourceManager.GetString("SealOfAscension", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Seal of Divinity.
+        /// </summary>
+        public static string SealOfDivinity {
+            get {
+                return ResourceManager.GetString("SealOfDivinity", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Seal of Healing.
+        /// </summary>
+        public static string SealOfHealing {
+            get {
+                return ResourceManager.GetString("SealOfHealing", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Seal of Sustenance.
+        /// </summary>
+        public static string SealOfSustenance {
+            get {
+                return ResourceManager.GetString("SealOfSustenance", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Seal of Wealth.
+        /// </summary>
+        public static string SealOfWealth {
+            get {
+                return ResourceManager.GetString("SealOfWealth", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 2nd Lucky Armor Ticket.
+        /// </summary>
+        public static string SecondLuckyArmorTicket {
+            get {
+                return ResourceManager.GetString("SecondLuckyArmorTicket", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 2nd Lucky Boots Ticket.
+        /// </summary>
+        public static string SecondLuckyBootsTicket {
+            get {
+                return ResourceManager.GetString("SecondLuckyBootsTicket", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 2nd Lucky Gloves Ticket.
+        /// </summary>
+        public static string SecondLuckyGlovesTicket {
+            get {
+                return ResourceManager.GetString("SecondLuckyGlovesTicket", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 2nd Lucky Helm Ticket.
+        /// </summary>
+        public static string SecondLuckyHelmTicket {
+            get {
+                return ResourceManager.GetString("SecondLuckyHelmTicket", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to 2nd Lucky Pants Ticket.
+        /// </summary>
+        public static string SecondLuckyPantsTicket {
+            get {
+                return ResourceManager.GetString("SecondLuckyPantsTicket", resourceCulture);
             }
         }
 
@@ -5470,6 +5929,15 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Sphinx Helm.
+        /// </summary>
+        public static string SphinxHelm {
+            get {
+                return ResourceManager.GetString("SphinxHelm", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Sphinx Mask.
         /// </summary>
         public static string SphinxMask {
@@ -5704,6 +6172,42 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Storm Jahad Armor.
+        /// </summary>
+        public static string StormJahadArmor {
+            get {
+                return ResourceManager.GetString("StormJahadArmor", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Storm Jahad Boots.
+        /// </summary>
+        public static string StormJahadBoots {
+            get {
+                return ResourceManager.GetString("StormJahadBoots", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Storm Jahad Helm.
+        /// </summary>
+        public static string StormJahadHelm {
+            get {
+                return ResourceManager.GetString("StormJahadHelm", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Storm Jahad Pants.
+        /// </summary>
+        public static string StormJahadPants {
+            get {
+                return ResourceManager.GetString("StormJahadPants", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Stryker Scepter.
         /// </summary>
         public static string StrykerScepter {
@@ -5884,6 +6388,24 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Talisman of Chaos Assembly.
+        /// </summary>
+        public static string TalismanOfChaosAssembly {
+            get {
+                return ResourceManager.GetString("TalismanOfChaosAssembly", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Talisman of Luck.
+        /// </summary>
+        public static string TalismanOfLuck {
+            get {
+                return ResourceManager.GetString("TalismanOfLuck", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Tear of Elf.
         /// </summary>
         public static string TearOfElf {
@@ -6015,6 +6537,15 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         public static string Tomahawk {
             get {
                 return ResourceManager.GetString("Tomahawk", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Topaz Ring.
+        /// </summary>
+        public static string TopazRing {
+            get {
+                return ResourceManager.GetString("TopazRing", resourceCulture);
             }
         }
 
@@ -6177,6 +6708,51 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         public static string VinePants {
             get {
                 return ResourceManager.GetString("VinePants", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Violent Wind Armor.
+        /// </summary>
+        public static string ViolentWindArmor {
+            get {
+                return ResourceManager.GetString("ViolentWindArmor", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Violent Wind Boots.
+        /// </summary>
+        public static string ViolentWindBoots {
+            get {
+                return ResourceManager.GetString("ViolentWindBoots", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Violent Wind Gloves.
+        /// </summary>
+        public static string ViolentWindGloves {
+            get {
+                return ResourceManager.GetString("ViolentWindGloves", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Violent Wind Helm.
+        /// </summary>
+        public static string ViolentWindHelm {
+            get {
+                return ResourceManager.GetString("ViolentWindHelm", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Violent Wind Pants.
+        /// </summary>
+        public static string ViolentWindPants {
+            get {
+                return ResourceManager.GetString("ViolentWindPants", resourceCulture);
             }
         }
 

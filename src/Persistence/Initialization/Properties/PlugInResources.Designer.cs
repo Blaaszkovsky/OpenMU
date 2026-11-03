@@ -115,6 +115,42 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to This update adds the seals, scrolls, elixirs and auras of the in-game shop, which apply a timed effect when they are used. Existing items with the same numbers are left unchanged..
+        /// </summary>
+        public static string AddBuffItemsUpdatePlugIn_Description {
+            get {
+                return ResourceManager.GetString("AddBuffItemsUpdatePlugIn_Description", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Add buff items.
+        /// </summary>
+        public static string AddBuffItemsUpdatePlugIn_Name {
+            get {
+                return ResourceManager.GetString("AddBuffItemsUpdatePlugIn_Name", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to This update adds the Lethal Wizard&apos;s Ring, the Sapphire, Ruby, Topaz and Amethyst Rings and the Ruby, Emerald and Sapphire Necklaces of the in-game shop, with their fixed bonuses. Their packages stay not for sale, because the shop sells them for a limited time, which isn&apos;t supported yet..
+        /// </summary>
+        public static string AddCashShopJeweleryUpdatePlugIn_Description {
+            get {
+                return ResourceManager.GetString("AddCashShopJeweleryUpdatePlugIn_Description", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Add cash shop rings and necklaces.
+        /// </summary>
+        public static string AddCashShopJeweleryUpdatePlugIn_Name {
+            get {
+                return ResourceManager.GetString("AddCashShopJeweleryUpdatePlugIn_Name", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to This update adds the cash shop configuration with the packages of the cash shop script 512.2012.084 of the game client, and the items which are applied when they&apos;re used from the cash shop storage (character cards, vault and inventory extension)..
         /// </summary>
         public static string AddCashShopUpdatePlugIn_Description {
@@ -183,6 +219,24 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         public static string AddCraftingBonusPercentageAttributePlugInBase_Name {
             get {
                 return ResourceManager.GetString("AddCraftingBonusPercentageAttributePlugInBase_Name", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to This update adds the Talisman of Luck, which increases the success rate of a crafting by its durability in percent, and the Talisman of Chaos Assembly, which keeps the item of a failed +10 to +15 item upgrade. They are added to the craftings which accept them, and the packages of the in-game shop which contain them are put on sale..
+        /// </summary>
+        public static string AddCraftingTalismansUpdatePlugIn_Description {
+            get {
+                return ResourceManager.GetString("AddCraftingTalismansUpdatePlugIn_Description", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Add crafting talismans.
+        /// </summary>
+        public static string AddCraftingTalismansUpdatePlugIn_Name {
+            get {
+                return ResourceManager.GetString("AddCraftingTalismansUpdatePlugIn_Name", resourceCulture);
             }
         }
 
@@ -309,6 +363,24 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         public static string AddElfSoldierBuffPlugIn_Name {
             get {
                 return ResourceManager.GetString("AddElfSoldierBuffPlugIn_Name", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to This update adds the elite healing, mana and SD potions of the in-game shop, which recover health, mana or shield immediately. The packages of the in-game shop which contain them are put on sale..
+        /// </summary>
+        public static string AddElitePotionsUpdatePlugIn_Description {
+            get {
+                return ResourceManager.GetString("AddElitePotionsUpdatePlugIn_Description", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Add elite potions.
+        /// </summary>
+        public static string AddElitePotionsUpdatePlugIn_Name {
+            get {
+                return ResourceManager.GetString("AddElitePotionsUpdatePlugIn_Name", resourceCulture);
             }
         }
 
@@ -619,6 +691,24 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to This update adds the kalima ticket, which opens a gate to the level of Kalima which fits the level of the character. The packages of the in-game shop which contain it are put on sale..
+        /// </summary>
+        public static string AddKalimaTicketUpdatePlugIn_Description {
+            get {
+                return ResourceManager.GetString("AddKalimaTicketUpdatePlugIn_Description", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Add kalima ticket.
+        /// </summary>
+        public static string AddKalimaTicketUpdatePlugIn_Name {
+            get {
+                return ResourceManager.GetString("AddKalimaTicketUpdatePlugIn_Name", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to This update adds the Kanturu Refinery Tower event configuration..
         /// </summary>
         public static string AddKanturuDataUpdatePlugIn_Description {
@@ -687,6 +777,24 @@ namespace MUnique.OpenMU.Persistence.Initialization.Properties {
         public static string AddLorenMarketRaulJewelBundlePlugIn_Name {
             get {
                 return ResourceManager.GetString("AddLorenMarketRaulJewelBundlePlugIn_Name", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to This update adds the lucky armor sets, the lucky item tickets and the jewels of extension and elevation. David in Elveland exchanges a ticket for a lucky armor which fits the character class. The packages of the in-game shop which contain the tickets are put on sale..
+        /// </summary>
+        public static string AddLuckyItemsUpdatePlugIn_Description {
+            get {
+                return ResourceManager.GetString("AddLuckyItemsUpdatePlugIn_Description", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Add lucky items.
+        /// </summary>
+        public static string AddLuckyItemsUpdatePlugIn_Name {
+            get {
+                return ResourceManager.GetString("AddLuckyItemsUpdatePlugIn_Name", resourceCulture);
             }
         }
 
